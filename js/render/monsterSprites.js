@@ -17,14 +17,15 @@ export const MONSTER_KINDS = [
 const BASE = new URL('../../assets/monsters/', import.meta.url).href;
 const imgs = {};      // 'pink_happy' → HTMLImageElement（已解码）
 let started = false, loadedCount = 0;
+const VER = '?v=9';   // 换图时改这里：v8 也有 pink / mint / lavender 同名文件，避免浏览器拿到旧缓存
 
 function load(key) {
   return new Promise(res => {
     const im = new Image(); im.decoding = 'async';
     let triedPng = false;
     im.onload = () => { (im.decode ? im.decode().catch(() => {}) : Promise.resolve()).then(() => { imgs[key] = im; loadedCount++; res(); }); };
-    im.onerror = () => { if (!triedPng) { triedPng = true; im.src = BASE + key + '.png'; } else res(); };  // WebP 不支持时退回 PNG
-    im.src = BASE + key + '.webp';
+    im.onerror = () => { if (!triedPng) { triedPng = true; im.src = BASE + key + '.png' + VER; } else res(); };  // WebP 不支持时退回 PNG
+    im.src = BASE + key + '.webp' + VER;
   });
 }
 
