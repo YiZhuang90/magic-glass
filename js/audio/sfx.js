@@ -2,11 +2,11 @@
 // 轻轻的哭声：每个音 [开始秒, 时长, 起始音高, 结束音高, 音量]
 const CRY_VARIANTS = [
   // “呜~ 呜~” + 抽鼻子
-  [[0, 0.28, 640, 540, 0.043], [0.34, 0.4, 610, 455, 0.04], [0.82, 0.07, 780, 680, 0.017]],
+  [[0, 0.28, 640, 540, 0.12], [0.34, 0.4, 610, 455, 0.112], [0.82, 0.07, 780, 680, 0.048]],
   // 三声小抽泣，最后一声拖长
-  [[0, 0.15, 680, 600, 0.034], [0.19, 0.15, 660, 580, 0.034], [0.41, 0.42, 630, 450, 0.04], [0.88, 0.06, 760, 660, 0.015]],
+  [[0, 0.15, 680, 600, 0.095], [0.19, 0.15, 660, 580, 0.095], [0.41, 0.42, 630, 450, 0.112], [0.88, 0.06, 760, 660, 0.042]],
   // “呜——呜~”：第一声长一点，第二声更低
-  [[0, 0.36, 600, 520, 0.041], [0.43, 0.38, 560, 420, 0.038], [0.86, 0.06, 720, 640, 0.015]],
+  [[0, 0.36, 600, 520, 0.115], [0.43, 0.38, 560, 420, 0.106], [0.86, 0.06, 720, 640, 0.042]],
 ];
 
 export class Sfx {
@@ -129,16 +129,17 @@ export class Sfx {
     src.connect(f).connect(g).connect(this.master); src.start(t); src.stop(t + 0.4);
   }
   /** 水花“啪嚓”：噪声爆破 + 一串小水滴音 */
-  splash(big = false) {
-    const c = this.ctx; if (!c) return; const t = c.currentTime;
+  /** level：整体音量倍数；打中怪兽时用小一点、尾巴短一点，让后面的哭声听得清 */
+  splash(big = false, level = 1) {
+    const c = this.ctx; if (!c) return; const t = c.currentTime, tail = level < 1 ? 0.3 : 0.45;
     const src = c.createBufferSource(); src.buffer = this._noiseBuf || (this._noiseBuf = this._noiseBuffer(1));
     const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(5000, t); f.frequency.exponentialRampToValueAtTime(600, t + 0.4);
-    const g = c.createGain(); g.gain.setValueAtTime(big ? 0.5 : 0.38, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+    const g = c.createGain(); g.gain.setValueAtTime((big ? 0.5 : 0.38) * level, t); g.gain.exponentialRampToValueAtTime(0.001, t + tail);
     src.connect(f).connect(g).connect(this.master); src.start(t); src.stop(t + 0.5);
     for (let i = 0; i < (big ? 6 : 4); i++) {
       const o = c.createOscillator(), og = c.createGain(), st = t + 0.04 + i * 0.05 + Math.random() * 0.03, f0 = 900 + Math.random() * 900;
       o.type = 'sine'; o.frequency.setValueAtTime(f0, st); o.frequency.exponentialRampToValueAtTime(f0 * 1.8, st + 0.06);
-      og.gain.setValueAtTime(0.06, st); og.gain.exponentialRampToValueAtTime(0.0001, st + 0.08);
+      og.gain.setValueAtTime(0.06 * level, st); og.gain.exponentialRampToValueAtTime(0.0001, st + 0.08);
       o.connect(og).connect(this.master); o.start(st); o.stop(st + 0.1);
     }
   }
@@ -163,7 +164,7 @@ export class Sfx {
   }
   /**
    * 被打中哭（v10：轻轻的）：像小猫一样“呜~ 呜~”两三声，正弦 + 一点点三角波、低通滤掉刺耳的高频，
-   * 慢慢起音、轻微颤音、音高往下滑，最后一声小抽鼻子。约 0.8–0.95 秒，峰值约为 v9 的 30%、平均响度约一半（而且没有刺耳的高频，听起来更轻）。
+   * 慢慢起音、轻微颤音、音高往下滑，最后一声小抽鼻子。约 0.8–0.95 秒，v11：音色不变，音量调回 v10 的约 2.8 倍（峰值约 0.12、平均约 −29 dBFS，和 v9 差不多响，但没有刺耳的高频）。
    * 3 种变体随机挑（连着两次不会一样），听多了也不腻。cry(v) 可指定变体（离线渲染试听用）。
    */
   get cryVariants() { return CRY_VARIANTS.length; }

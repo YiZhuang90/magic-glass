@@ -304,7 +304,7 @@ export class ThrowMode {
     this._splash(m.x, m.cy, rainbow, null, m.r, true);
     // 被打中就哭（哭脸 + 掉眼泪 + 委屈的“哇——哇”）
     for (const [tx, ty] of tearPoints(m)) for (let k = 0; k < 2; k++) this._squirtTear(m, tx, ty);
-    this.sfx.splash(true); setTimeout(() => this.sfx.cry?.(), 140);
+    this.sfx.splash(true, 0.7); setTimeout(() => this.sfx.cry?.(), 200); // 水花小一点、短一点，哭声晚 0.2 秒出来，听得清
     this.promptAt = this.t;
     if (!correct) { this.bus.emit('throw:neutral', { label: m.label?.text }); return; } // 目标模式里还没出题时打中：不计分
     this.hits++; this.starPulse = 1;
