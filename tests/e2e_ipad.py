@@ -47,10 +47,9 @@ with sync_playwright() as p:
           try { await t.initModel(()=>{}); } catch (e) { return {error: String(e)} }
           const im = new Image(); im.src = img; await im.decode();
           const c = document.createElement('canvas'); c.width = 640; c.height = 480; c.getContext('2d').drawImage(im, 0, 0, 640, 480);
-          const hands = t.landmarker.detectForVideo(c, performance.now() + 1);
-          const faces = t.faceDetector ? t.faceDetector.detectForVideo(c, performance.now() + 2) : {detections: []};
-          return {hand: t.backend, face: t.faceBackend, loadMs: Math.round(performance.now() - t0), hands: hands.landmarks.length,
-                  handedness: (hands.handedness || []).map(h => h[0].categoryName), faces: faces.detections.length}; }''', IMG)
+          const r = await t.detectOnce(c);  // v7：默认在识别线程（Worker）里识别
+          return {hand: t.backend, face: t.faceBackend, thread: r.thread, loadMs: Math.round(performance.now() - t0), hands: r.hands.length,
+                  handedness: r.hands, faces: r.faces}; }''', IMG)
         check('mediapipe_loads_and_detects_in_webkit', res.get('hands', 0) >= 2 and res.get('faces', 0) == 2, res)
         # 摄像头：getUserMedia 存在（https 下）；无摄像头时优雅退回触屏模式
         check('getUserMedia_available', pg.evaluate('!!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)'))

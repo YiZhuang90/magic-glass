@@ -117,10 +117,14 @@
       <button id="btnNext">⏭ 下一张</button>
       <button id="btnFullscreen">⛶ 全屏</button>
     </div>
+    <div class="row">
+      <label for="perfMode">画质 / 流畅度</label>
+      <select id="perfMode"><option value="smooth">🚀 流畅（默认，最跟手）</option><option value="auto">⚖️ 自动（卡了自动降画质）</option><option value="hq">✨ 高画质（电脑够快时用）</option></select>
+    </div>
     <div class="row inline"><label for="perf">性能浮层（F 键）</label><input id="perf" type="checkbox" /></div>
     <details class="adv"><summary>高级</summary>
       <div class="row">
-        <label for="renderMax">内部渲染分辨率（最长边）</label>
+        <label for="renderMax">内部渲染分辨率（最长边，“高画质”时使用）</label>
         <select id="renderMax"><option value="1024">1024 px（最省）</option><option value="1280">1280 px</option><option value="1440">1440 px（默认）</option><option value="1600">1600 px</option><option value="1920">1920 px</option></select>
         <p class="hint">画布按这个分辨率绘制，再用 CSS 拉伸到全屏。数值越小越流畅。</p>
       </div>

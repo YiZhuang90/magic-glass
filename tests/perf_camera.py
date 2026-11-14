@@ -18,7 +18,7 @@ with sync_playwright() as p:
     pg.goto(url); pg.wait_for_timeout(500); pg.click('#btnStart', force=True)
     pg.wait_for_function('__mg.tracker.landmarker && (!__mg.settings.players || __mg.tracker.faceDetector)', timeout=120000)
     pg.evaluate('__mg.goMode("paint")'); pg.wait_for_timeout(4000)
-    pg.evaluate(REC); pg.wait_for_timeout(5000)
+    pg.wait_for_timeout(int(sys.argv[4]) if len(sys.argv) > 4 else 0); pg.evaluate(REC); pg.wait_for_timeout(5000)
     ft = stats(pg.evaluate('window.__ft.splice(0)'))
     info = pg.evaluate('''({hand:__mg.tracker.backend, face:__mg.tracker.faceBackend, handMs:+__mg.tracker.handMs.toFixed(1), faceMs:+__mg.tracker.faceMs.toFixed(1),
         handFps:+__mg.tracker.detectFps.toFixed(1), faceFps:+__mg.tracker.faceFps.toFixed(1), work:+(window.__perf?.workMs||0).toFixed(2),

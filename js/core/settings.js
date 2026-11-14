@@ -18,7 +18,8 @@ export const DEFAULTS = {
   safeMargin: 0.15,      // 屏幕模式安全区：摄像头画面四周各留多少不用（0–0.3），中间映射到全屏
   safeBottomExtra: 0.10, // 安全区下边再多留多少（孩子的手放低时常常出画面）
   handScale: 1,          // 虚拟手大小
-  renderMax: 1440,       // 高级：内部画布最长边（像素），CSS 拉伸到全屏
+  perfMode: 'smooth',    // 画质：'smooth' 流畅（默认）| 'auto' 自动 | 'hq' 高画质
+  renderMax: 1440,       // 高级：“高画质”时的内部画布最长边（像素），CSS 拉伸到全屏
   perfOverlay: false,
   throwContent: 'num',   // 投水球目标模式的标签：'num' 数字 1–10 | 'letter' 大写字母 | 'hanzi' 常见汉字 | 'mix' 混合
   throwSkipFree: false,  // 跳过自由模式，直接出题

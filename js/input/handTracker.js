@@ -16,7 +16,7 @@ export class HandTracker {
     this.faces = [];          // [{ x, y, w, h, score }] 镜像后的归一化人脸框（只有框，不含图像）
     this.faceSeq = 0;         // 每次人脸结果更新 +1
     this.faceDetector = null; this.faceBackend = 'none'; this.facesOn = false;
-    this.faceInterval = 100;  // 人脸检测约 10 fps
+    this.faceInterval = 200;  // 人脸检测约 5 fps（只有一只手时约 2 fps）
     this.lastFaceAt = 0; this.faceFps = 0; this._faceCount = 0;
     this.handMs = 0; this.faceMs = 0; // 每次识别耗时（平滑）
     this._handErr = 0; this._faceErr = 0;
@@ -28,6 +28,11 @@ export class HandTracker {
     this.running = false;
     this.detectInterval = 1000 / 30 - 2; // 识别最多约 30 fps
     this.lastDetectAt = 0;
+    // v7：识别默认放到 Web Worker（识别线程），主线程渲染不再被识别卡住；失败自动退回主线程
+    this.thread = 'main';      // 'worker' | 'main'
+    this.worker = null; this._inflight = false; this._inflightAt = 0; this._result = null; this._frameId = 0;
+    this.useWorker = true;
+    this.maxInput = 640;       // 送进模型的最长边（摄像头给更大的画面时先缩小）
   }
 
   async listCameras() {
@@ -63,6 +68,10 @@ export class HandTracker {
   async initModel(onStatus = () => {}) {
     if (this.landmarker) return this.backend;
     onStatus('正在加载手部识别模型…');
+    if (this.useWorker && typeof Worker !== 'undefined' && typeof createImageBitmap === 'function') {
+      try { return await this._initWorker(); }
+      catch (e) { console.warn('识别线程不可用，改在主线程识别', e); this._killWorker(); }
+    }
     const vision = this._vision = await import(`${MP_BASE}/vision_bundle.mjs`);
     const fileset = this._fileset = await vision.FilesetResolver.forVisionTasks(`${MP_BASE}/wasm`);
     const opts = this._handOpts = (delegate) => ({
@@ -81,6 +90,92 @@ export class HandTracker {
     }
     if (this.facesOn) await this._initFaces().catch(e => console.warn('人脸检测加载失败，退回按手区分', e));
     return this.backend;
+  }
+
+  _initWorker() {
+    return new Promise((resolve, reject) => {
+      const w = this.worker = new Worker(new URL('./detectWorker.js', import.meta.url));
+      const to = setTimeout(() => reject(new Error('识别线程加载超时')), 60000);
+      w.onerror = (e) => { clearTimeout(to); reject(new Error(e.message || '识别线程出错')); };
+      w.onmessage = (ev) => {
+        const m = ev.data;
+        if (m.type === 'ready') {
+          clearTimeout(to); this.thread = 'worker'; this.backend = m.handBackend; this._setFaceBackend(m.faceBackend);
+          this.landmarker = { worker: true, setOptions: async (o) => w.postMessage({ type: 'maxHands', n: o.numHands }) };
+          resolve(this.backend);
+        } else if (m.type === 'error' && m.stage === 'init') { clearTimeout(to); reject(new Error(m.message)); }
+        else if (m.type === 'error') { console.warn('识别线程：', m.message); this._inflight = false; }
+        else if (m.type === 'note') { this.note = m.text; console.warn('识别线程：', m.text); }
+        else if (m.type === 'status') { this._setFaceBackend(m.faceBackend); }
+        else if (m.type === 'result') { this._inflight = false; this._result = m; }
+      };
+      w.postMessage({ type: 'init', base: MP_BASE, handModel: MODEL_URL, faceModel: FACE_MODEL_URL, maxHands: this.maxHands, faces: this.facesOn, gpu: true });
+    });
+  }
+  /** 测试 / 诊断：对一张图（canvas / 图片）识别一次，返回 { hands: [handedness…], faces: n, thread }。 */
+  async detectOnce(src) {
+    if (this.worker) {
+      const bmp = await createImageBitmap(src);
+      const id = ++this._frameId;
+      const r = await new Promise((resolve) => {
+        const on = (ev) => { if (ev.data.type === 'result' && ev.data.id === id) { this.worker.removeEventListener('message', on); resolve(ev.data); } };
+        this.worker.addEventListener('message', on);
+        this.worker.postMessage({ type: 'frame', id, bitmap: bmp, ts: performance.now() + 1000, doFace: true }, [bmp]);
+      });
+      return { thread: 'worker', hands: (r.hands || []).map(h => h.handedness), faces: (r.faces || []).length };
+    }
+    const h = this.landmarker.detectForVideo(src, performance.now() + 1);
+    const f = this.faceDetector ? this.faceDetector.detectForVideo(src, performance.now() + 2) : { detections: [] };
+    return { thread: 'main', hands: (h.handedness || []).map(x => x[0].categoryName), faces: f.detections.length };
+  }
+  _setFaceBackend(b) {
+    this.faceBackend = b || 'none';
+    this.faceDetector = this.faceBackend !== 'none' ? { worker: true } : null;
+  }
+  _killWorker() { try { this.worker?.terminate(); } catch {} this.worker = null; this.thread = 'main'; this.landmarker = null; this.faceDetector = null; this.faceBackend = 'none'; }
+
+  /** 识别线程：有新结果就收下（返回 true），没有正在识别的帧就送一帧新的（不等待）。 */
+  _updateWorker(now) {
+    const v = this.video;
+    let fresh = false;
+    const r = this._result;
+    if (r) {
+      this._result = null;
+      this.backend = r.handBackend; if (r.faceBackend !== this.faceBackend) this._setFaceBackend(r.faceBackend);
+      if (r.faces) {
+        this.faces = r.faces.map(([x, y, w, h, score]) => ({ x: 1 - (x + w) / r.w, y: y / r.h, w: w / r.w, h: h / r.h, score }));
+        this.faceSeq++; this._faceCount++; this.faceMs += (r.faceMs - this.faceMs) * 0.2;
+      }
+      if (r.hands) {
+        this.hands = r.hands.map(h => ({ landmarks: h.lm.map(p => ({ x: 1 - p[0], y: p[1], z: p[2] })), raw: h.lm.map(p => ({ x: p[0], y: p[1], z: p[2] })), handedness: h.handedness, score: h.score }));
+        this.handMs += (r.handMs - this.handMs) * 0.2;
+        this.videoW = v.videoWidth || 640; this.videoH = v.videoHeight || 480;
+        this.lastResultAt = performance.now(); this._fpsCount++; fresh = true;
+      }
+      this._tickFps();
+    }
+    if (this._inflight && now - this._inflightAt > 3000) this._inflight = false; // 防止某一帧丢失后卡住
+    if (!this._inflight && v.readyState >= 2 && v.currentTime !== this.lastVideoTime && now - this.lastDetectAt >= this.detectInterval) {
+      this._inflight = true; this._inflightAt = now; this.lastDetectAt = now; this.lastVideoTime = v.currentTime;
+      const doFace = !!(this.faceDetector && this.facesOn && now - this.lastFaceAt >= this._faceIntervalNow());
+      if (doFace) this.lastFaceAt = now;
+      const vw = v.videoWidth, vh = v.videoHeight, k = Math.min(1, this.maxInput / Math.max(vw, vh, 1));
+      const id = ++this._frameId, ts = now;
+      const send = (bmp) => { if (!this.worker) { bmp.close?.(); return; } this.worker.postMessage({ type: 'frame', id, bitmap: bmp, ts, doFace }, [bmp]); };
+      const grab = k < 1 ? createImageBitmap(v, { resizeWidth: Math.round(vw * k), resizeHeight: Math.round(vh * k), resizeQuality: 'low' }).catch(() => createImageBitmap(v)) : createImageBitmap(v);
+      grab.then(send, (e) => { console.warn(e); this._inflight = false; });
+    }
+    return fresh;
+  }
+  /** 人脸框：画面里 ≥2 只手时约 5 fps，否则约 2 fps（人走开有 2 秒宽限，够用） */
+  _faceIntervalNow() { return this.hands.length >= 2 ? this.faceInterval : this.faceInterval * 2.5; }
+  _tickFps() {
+    const tnow = performance.now();
+    if (tnow - this._fpsT > 1000) {
+      const dt = tnow - this._fpsT;
+      this.detectFps = this._fpsCount * 1000 / dt; this.faceFps = this._faceCount * 1000 / dt;
+      this._fpsCount = 0; this._faceCount = 0; this._fpsT = tnow;
+    }
   }
 
   /**
@@ -106,7 +201,9 @@ export class HandTracker {
   /** 打开 / 关闭“区分玩家”用的人脸框检测（关闭时不运行模型） */
   async setFaces(on) {
     this.facesOn = on;
+    if (this.worker) this.worker.postMessage({ type: 'faces', on });
     if (!on) { this.faces = []; this.faceSeq++; return; }
+    if (this.worker) return;
     if (this._vision && !this.faceDetector) await this._initFaces().catch(e => console.warn('人脸检测加载失败', e));
   }
 
@@ -136,6 +233,7 @@ export class HandTracker {
 
   async setMaxHands(n) {
     this.maxHands = n;
+    if (this.worker) { this.worker.postMessage({ type: 'maxHands', n }); return; }
     if (this.landmarker) try { await this.landmarker.setOptions({ numHands: n }); } catch {}
   }
 
@@ -143,10 +241,12 @@ export class HandTracker {
   update(now = performance.now()) {
     const v = this.video;
     if (!this.landmarker || !this.stream || v.readyState < 2) return false;
-    // 人脸检测约 10 fps，尽量放在不做手部识别的渲染帧里，分散开销
-    const faceDue = this.faceDetector && this.facesOn && now - this.lastFaceAt >= this.faceInterval;
+    if (this.worker) return this._updateWorker(now);
+    // 主线程识别（识别线程不可用时）：人脸检测尽量放在不做手部识别的渲染帧里，分散开销
+    const fi = this._faceIntervalNow();
+    const faceDue = this.faceDetector && this.facesOn && now - this.lastFaceAt >= fi;
     const handDue = v.currentTime !== this.lastVideoTime && now - this.lastDetectAt >= this.detectInterval;
-    if (faceDue && (!handDue || now - this.lastFaceAt > this.faceInterval * 2.5)) { this.lastFaceAt = now; this._detectFaces(v); }
+    if (faceDue && (!handDue || now - this.lastFaceAt > fi * 2.5)) { this.lastFaceAt = now; this._detectFaces(v); }
     if (!handDue) return false;
     this.lastDetectAt = now;
     this.lastVideoTime = v.currentTime;
@@ -168,13 +268,7 @@ export class HandTracker {
     this.hands = hands;
     this.videoW = v.videoWidth || 640; this.videoH = v.videoHeight || 480;
     this.lastResultAt = performance.now();
-    this._fpsCount++;
-    const tnow = performance.now();
-    if (tnow - this._fpsT > 1000) {
-      const dt = tnow - this._fpsT;
-      this.detectFps = this._fpsCount * 1000 / dt; this.faceFps = this._faceCount * 1000 / dt;
-      this._fpsCount = 0; this._faceCount = 0; this._fpsT = tnow;
-    }
+    this._fpsCount++; this._tickFps();
     return true;
   }
 }

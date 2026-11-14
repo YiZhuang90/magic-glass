@@ -4,7 +4,7 @@ import { star } from './cardArt.js';
 const COLORS = ['#ff4d6d', '#ffbe0b', '#3a86ff', '#8338ec', '#06d6a0', '#ff8fab', '#fb5607'];
 
 export class Effects {
-  constructor() { this.parts = []; this.w = 1; this.h = 1; }
+  constructor() { this.parts = []; this.w = 1; this.h = 1; this.maxParts = 600; }
   resize(w, h) { this.w = w; this.h = h; }
 
   /** 大庆祝：从两侧下角喷出彩带 + 中心星星爆开 */
@@ -65,6 +65,7 @@ export class Effects {
       p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.vr * dt;
     }
     this.parts = this.parts.filter(p => p.life > 0 && p.y < this.h + 80);
+    if (this.parts.length > this.maxParts) this.parts.splice(0, this.parts.length - this.maxParts); // 粒子上限（流畅档更少）
   }
 
   render(ctx) {

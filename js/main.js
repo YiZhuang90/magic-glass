@@ -22,9 +22,52 @@ const $ = (s) => document.querySelector(s);
 const stage = $('#stage'), ctx = stage.getContext('2d', { alpha: false });
 const video = $('#video');
 
+// ---------- v7 画质 / 流畅度 ----------
+// 阴影模糊（shadowBlur）是 Canvas 2D 里最贵的效果之一：流畅档在主画布上把它关掉（偏移阴影仍保留，卡通感不变）。
+const _blurDesc = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'shadowBlur');
+let shadowsOn = true;
+try {
+  Object.defineProperty(ctx, 'shadowBlur', { configurable: true, get() { return _blurDesc.get.call(this); }, set(v) { _blurDesc.set.call(this, shadowsOn ? v : 0); } });
+} catch {}
+// 各档的内部画布最长边：画布像素和屏幕大小 / devicePixelRatio 无关，CSS 拉伸到全屏（3072×1920 的屏幕也只画这么多像素）
+const TIERS = [1440, 1280, 1024, 860, 720];
+const PROFILES = {
+  smooth: { start: 1024, min: 720, shadows: false, parts: 160 },  // 流畅（默认）：孩子不在乎清晰度，帧率优先
+  auto:   { start: 1280, min: 860, shadows: true, parts: 300 },   // 自动：先清晰一点，卡了自动降
+  hq:     { start: 0, min: 0, shadows: true, parts: 600 },        // 高画质：用“高级 → 内部渲染分辨率”，不自动降
+};
+const quality = { profile: 'smooth', cap: 1024, drops: 0, pending: 0, lowWin: 0, win: [], winT: 0 };
+function profileOf() { return PROFILES[settings.perfMode] || PROFILES.smooth; }
+function applyQuality(reset) {
+  const P = profileOf();
+  quality.profile = PROFILES[settings.perfMode] ? settings.perfMode : 'smooth';
+  if (reset || !quality.cap) { quality.cap = P.start || settings.renderMax; quality.drops = 0; quality.pending = 0; }
+  shadowsOn = P.shadows && quality.cap >= 1024;
+  effects.maxParts = P.parts;
+}
+/** 自动降档：连续约 2 秒平均帧率 < 45 就降一档。首页 / 投水球立即生效；擦玻璃 / 画画要等下一次换模式（避免清掉画到一半的画）。 */
+function adaptQuality(now, frameMs) {
+  const P = profileOf();
+  if (!P.start || quality.cap <= P.min) return;
+  quality.win.push(frameMs);
+  if (now - quality.winT < 1000) return;
+  const a = quality.win.slice().sort((x, y) => x - y), med = a[a.length >> 1] || 0;
+  quality.win = []; quality.winT = now;
+  if (document.hidden || !med) return;
+  quality.lowWin = med > 22 ? quality.lowWin + 1 : 0;
+  if (quality.lowWin < 2) return;
+  quality.lowWin = 0;
+  const next = TIERS.find(t => t < quality.cap && t >= P.min);
+  if (!next) return;
+  quality.cap = next; quality.drops++; shadowsOn = P.shadows && next >= 1024;
+  console.info('[魔法玻璃] 帧率偏低，内部分辨率降到', next);
+  if (!mode || mode === instances.home || mode === instances.throw) resize(); else quality.pending = 1;
+}
+
 let settings = loadSettings();
 const log = new EventLog();
 const tracker = new HandTracker(video);
+if (/[?&]worker=0\b/.test(location.search)) tracker.useWorker = false; // 调试：强制在主线程识别
 const calibration = new CalibrationStore();
 const input = new InputManager({ tracker, calibration, element: stage, getSettings: () => settings });
 const sfx = new Sfx(); sfx.volume = settings.volume;
@@ -53,7 +96,8 @@ function goMode(name, params) {
   speech.cancel();
   effects.parts = [];
   if (!instances[name] || params) instances[name] = new MODES[name](shared());
-  mode = instances[name];
+  const prev = mode; mode = instances[name];
+  if (quality.pending && running && prev) resize(); // 降档推迟到换模式时生效
   mode.applySettings({ ...settings });
   mode.resize(stage.width, stage.height);
   mode.enter(params);
@@ -65,7 +109,9 @@ function goMode(name, params) {
 let Q = 1;
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
-  const maxSide = Math.min(settings.renderMax, Math.max(w, h) * (window.devicePixelRatio || 1));
+  quality.pending = 0;
+  const cap = quality.profile === 'hq' ? settings.renderMax : quality.cap;
+  const maxSide = Math.min(cap, Math.max(w, h) * (window.devicePixelRatio || 1));
   Q = maxSide / Math.max(w, h);
   stage.width = Math.round(w * Q); stage.height = Math.round(h * Q);
   input.resize(w, h, Q); ui.setBounds(stage.width, stage.height);
@@ -105,6 +151,7 @@ function frame(now) {
   calibUI.render(ctx, stage.width, stage.height);
   if (!$('#previewBox').classList.contains('collapsed')) drawPreview();
   const work = performance.now() - tStart;
+  adaptQuality(now, (now - perf.lastNow) || 16); perf.lastNow = now;
   perf.frames++; perf.workSum += work; perf.workMax = Math.max(perf.workMax, work);
   if (now - perf.t0 > 500) {
     perf.fps = perf.frames * 1000 / (now - perf.t0); perf.work = perf.workSum / perf.frames;
@@ -120,12 +167,14 @@ function updatePerf() {
     `渲染  ${perf.fps.toFixed(0)} fps   每帧计算 ${perf.work.toFixed(1)} ms（最大 ${perf.workMax.toFixed(1)}）`,
     `识别  ${tracker.backend === 'none' ? '未启用（鼠标/触屏）' : `手 ${tracker.detectFps.toFixed(0)} fps · ${tracker.handMs.toFixed(1)} ms · MediaPipe ${tracker.backend}`}`,
     `人脸  ${!settings.players ? '关闭（不区分玩家）' : tracker.faceDetector ? `${tracker.faceFps.toFixed(0)} fps · ${tracker.faceMs.toFixed(1)} ms · ${tracker.faceBackend} · 玩家 ${input.persons.persons.length}` : '未加载'}`,
-    `内部分辨率 ${stage.width}×${stage.height}（CSS ${innerWidth}×${innerHeight}，dpr ${devicePixelRatio}）`,
+    `识别线程 ${tracker.backend === 'none' ? '-' : tracker.thread === 'worker' ? 'Worker（不卡渲染）' : '主线程'}   送入模型 ≤${tracker.maxInput}px${tracker.note ? '   ' + tracker.note : ''}`,
+    `画质 ${({ smooth: '流畅', auto: '自动', hq: '高画质' })[quality.profile]}   内部分辨率 ${stage.width}×${stage.height}${quality.drops ? `（已自动降 ${quality.drops} 档${quality.pending ? '，换模式后生效' : ''}）` : ''}   阴影${shadowsOn ? '开' : '关'}`,
+    `屏幕 CSS ${innerWidth}×${innerHeight} · dpr ${devicePixelRatio} · 物理 ${Math.round(innerWidth * devicePixelRatio)}×${Math.round(innerHeight * devicePixelRatio)}`,
     `摄像头 ${vw ? vw + '×' + vh : '未打开'}   手 ${input.hands.filter(h => h.source === 'hand').length}   模式 ${mode?.name || '-'}`,
   ].join('\n');
   if (!box.classList.contains('hidden')) box.textContent = txt;
   const d = $('#diag'); if (d) d.textContent = txt;
-  window.__perf = { fps: perf.fps, workMs: perf.work, w: stage.width, h: stage.height };
+  window.__perf = { fps: perf.fps, workMs: perf.work, w: stage.width, h: stage.height, profile: quality.profile, cap: quality.cap, drops: quality.drops, shadows: shadowsOn, thread: tracker.thread, backend: tracker.backend, faceBackend: tracker.faceBackend, handMs: tracker.handMs, detectFps: tracker.detectFps, camera: [video.videoWidth, video.videoHeight] };
 }
 
 function drawPreview() {
@@ -234,6 +283,7 @@ function syncSettingsUI() {
   $('#throwContent').value = settings.throwContent || 'num'; $('#throwSkipFree').checked = !!settings.throwSkipFree;
   set('throwFreeHits', settings.throwFreeHits ?? 5, String(settings.throwFreeHits ?? 5));
   $('#perf').checked = settings.perfOverlay; $('#renderMax').value = String(settings.renderMax);
+  $('#perfMode').value = PROFILES[settings.perfMode] ? settings.perfMode : 'smooth';
   syncModeSeg();
 }
 
@@ -252,6 +302,10 @@ $('#lang').addEventListener('change', (e) => { settings.lang = e.target.value; c
 $('#preview').addEventListener('change', (e) => togglePreview(e.target.checked));
 $('#perf').addEventListener('change', (e) => togglePerf(e.target.checked));
 $('#renderMax').addEventListener('change', (e) => { settings.renderMax = +e.target.value; commit(); resize(); });
+$('#perfMode').addEventListener('change', (e) => {
+  settings.perfMode = e.target.value; commit(); applyQuality(true); if (running) resize();
+  toast({ smooth: '已切换到“流畅”：画面略软，但最跟手', auto: '已切换到“自动”：卡的时候自动降低画质', hq: '已切换到“高画质”：如果卡，请换回“流畅”' }[settings.perfMode]);
+});
 function togglePreview(on) { settings.showPreview = on; $('#previewBox').classList.toggle('collapsed', !on); commit(); }
 function togglePerf(on) { settings.perfOverlay = on; $('#perfBox').classList.toggle('hidden', !on); commit(); updatePerf(); }
 
@@ -290,6 +344,7 @@ $('#btnFullscreen').addEventListener('click', () => {
 function fsHint() { toast('这台设备不支持网页全屏：可以点 Safari 的“分享 → 添加到主屏幕”，从主屏幕打开就是全屏', 5000); }
 
 
+applyQuality(true);
 syncSettingsUI(); togglePreview(settings.showPreview); togglePerf(settings.perfOverlay);
 if (!window.isSecureContext) $('#startStatus').textContent = '提示：请用 https 网址或 localhost 打开，否则无法使用摄像头。';
 
