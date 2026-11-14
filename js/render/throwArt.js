@@ -1,6 +1,7 @@
 // 渲染层 · 投水球：后院草坪场景、软萌小怪兽、水球、篮子。全部用 canvas 程序绘制。
 // 场景分三层缓存成离屏图（天空 / 篱笆 + 草地 / 灌木），每帧只贴图；怪兽身体按颜色和大小缓存成小图。
 import { canvas, roundRect, ZH_FONT } from './cardArt.js';
+import { MONSTER_KINDS, spritesReady, spriteFor, spriteScale } from './monsterSprites.js';
 
 export const LABEL_FONT = `"Arial Rounded MT Bold","Nunito",${ZH_FONT}`;
 export const MONSTER_COLORS = [
@@ -140,6 +141,7 @@ function monsterBody(col, r, variant) {
  * 画一只怪兽。m: { x, cy（身体中心）, r, col, variant, label, wet(0–1), mood: 'happy'|'giggle'|'wet'|'surprise', t, squash, blink }
  */
 export function drawMonster(ctx, m) {
+  if (m.kind != null && spritesReady()) { const spr = spriteFor(m.kind, m.mood === 'cry' ? 'cry' : 'happy', m.r); if (spr) return drawSpriteMonster(ctx, m, spr); }
   const { r } = m, body = monsterBody(m.col, r, m.variant);
   const sq = m.squash || 0, sx = 1 + sq * 0.12, sy = 1 - sq * 0.12, tilt = m.tilt || 0;
   ctx.save();
@@ -148,7 +150,7 @@ export function drawMonster(ctx, m) {
   // 眼睛
   const ey = -r * 0.42, ex = r * 0.32, er = r * 0.19;
   ctx.lineCap = 'round';
-  if (m.mood === 'giggle' || m.mood === 'wet') {
+  if (m.mood === 'giggle' || m.mood === 'wet' || m.mood === 'cry') {
     // 眯眼笑 ^ ^ 或被打湿的 > <
     ctx.strokeStyle = '#2b2d42'; ctx.lineWidth = r * 0.08;
     for (const s of [-1, 1]) {
@@ -172,7 +174,7 @@ export function drawMonster(ctx, m) {
   // 嘴巴
   ctx.strokeStyle = '#2b2d42'; ctx.lineWidth = r * 0.06; ctx.fillStyle = '#ff5d73';
   const my = -r * 0.16; // 嘴巴放高一点，和肚皮上的字分开（不然“木”看起来像“术”）
-  if (m.mood === 'giggle' || m.mood === 'wet' || m.mood === 'surprise') { ctx.beginPath(); ctx.ellipse(0, my + r * 0.04, r * 0.13, r * (m.mood === 'surprise' ? 0.12 : 0.09), 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
+  if (m.mood === 'giggle' || m.mood === 'wet' || m.mood === 'cry' || m.mood === 'surprise') { ctx.beginPath(); ctx.ellipse(0, my + r * 0.04, r * 0.13, r * (m.mood === 'surprise' ? 0.12 : 0.09), 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
   else { ctx.beginPath(); ctx.arc(0, my - r * 0.04, r * 0.12, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke(); }
   // 标签（肚皮上，大字）
   if (m.label) {
@@ -194,6 +196,54 @@ export function drawMonster(ctx, m) {
   }
   ctx.restore();
 }
+
+// ---------- 贴图怪兽 ----------
+const LABEL_INK = '#3a2733';
+const labelW = new Map();   // 文字 → 100px 字号下的宽度（measureText 结果缓存）
+function labelWidth100(ctx, text) {
+  let w = labelW.get(text); if (w != null) return w;
+  ctx.font = `900 100px ${LABEL_FONT}`; w = ctx.measureText(text).width || 60 * text.length; labelW.set(text, w); return w;
+}
+/** 肚皮椭圆在画布上的位置（相对脚底锚点，未计入挤压 / 倾斜）：{ x, y, w, h } */
+export function bellyRect(m) {
+  const K = MONSTER_KINDS[m.kind], s = spriteScale(m.kind, m.r), W = K.w * s, H = K.h * s;
+  return { x: (K.belly.x - 0.5) * W, y: (K.belly.y - K.anchorY) * H, w: K.belly.w * W, h: K.belly.h * H };
+}
+/** 贴图怪兽的包围盒（世界坐标；脚底在 cy + 0.95r） */
+export function monsterBox(m) {
+  if (m.kind == null || !spritesReady()) return { x: m.x - m.r * 1.05, y: m.cy - m.r * 1.45, w: m.r * 2.1, h: m.r * 2.6 };
+  const K = MONSTER_KINDS[m.kind], s = spriteScale(m.kind, m.r), W = K.w * s, H = K.h * s, fy = m.cy + m.r * 0.95;
+  return { x: m.x - W / 2, y: fy - H * K.anchorY, w: W, h: H };
+}
+function drawSpriteMonster(ctx, m, spr) {
+  const r = m.r, sq = m.squash || 0, breath = Math.sin(m.t * 2.6) * 0.022, sob = m.sob || 0;
+  const sx = 1 + sq * 0.12 - breath + sob * 0.5, sy = 1 - sq * 0.12 + breath - sob;
+  ctx.save();
+  ctx.translate(m.x, m.cy + r * 0.95); ctx.rotate(m.tilt || 0); ctx.scale(sx, sy);
+  ctx.drawImage(spr, -spr.ax, -spr.ay);
+  const b = bellyRect(m);
+  if (m.label) {
+    const t = m.label.text, k = m.label.type === 'hanzi' ? 0.74 : 0.8;
+    const fs = Math.min(b.h * k, (b.w * 0.82) / (labelWidth100(ctx, t) / 100));
+    ctx.font = `900 ${fs}px ${LABEL_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = LABEL_INK; ctx.fillText(t, b.x, b.y + fs * 0.04);
+  } else if (m.heart !== false) {
+    // 自由模式：肚皮上一个小爱心
+    const hs = b.h * 0.2, hx = b.x, hy = b.y - hs * 0.1;
+    ctx.fillStyle = 'rgba(255,120,150,0.85)'; ctx.beginPath();
+    ctx.moveTo(hx, hy + hs * 0.9);
+    ctx.bezierCurveTo(hx - hs * 1.3, hy, hx - hs * 0.7, hy - hs, hx, hy - hs * 0.35);
+    ctx.bezierCurveTo(hx + hs * 0.7, hy - hs, hx + hs * 1.3, hy, hx, hy + hs * 0.9); ctx.fill();
+  }
+  ctx.restore();
+}
+/** 哭的时候眼泪从哪里掉：返回左右两点（世界坐标，脸颊上眼泪流下来的位置） */
+export function tearPoints(m) {
+  if (m.kind == null || !spritesReady()) return [[m.x - m.r * 0.32, m.cy - m.r * 0.3], [m.x + m.r * 0.32, m.cy - m.r * 0.3]];
+  const b = bellyRect(m), fy = m.cy + m.r * 0.95, y = fy + b.y - b.h * 0.55;
+  return [[m.x + b.x - b.w * 0.48, y], [m.x + b.x + b.w * 0.48, y]];
+}
+export function drawTear(ctx, x, y, s) { drop(ctx, x, y, s); }
 
 function drop(ctx, x, y, s) { ctx.beginPath(); ctx.moveTo(x, y - s * 1.6); ctx.quadraticCurveTo(x + s, y, x, y + s); ctx.quadraticCurveTo(x - s, y, x, y - s * 1.6); ctx.fill(); }
 

@@ -151,6 +151,33 @@ export class Sfx {
     g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.16, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
     o.connect(g).connect(this.master); o.start(t); l.start(t); o.stop(t + 0.35); l.stop(t + 0.35);
   }
+  /** 被打中哭：两声软软的“哇——哇”（音高往下滑 + 颤音，滤波器开合像张嘴），约 0.8 秒，委屈但不吓人 */
+  cry() {
+    const c = this.ctx; if (!c) return; const t0 = c.currentTime + 0.02, base = 560 + Math.random() * 120;
+    const out = c.createGain(); out.gain.value = 1;
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2600; lp.Q.value = 0.5;
+    out.connect(lp).connect(this.master);
+    [[0, 0.3, 1.0, 0.78], [0.34, 0.46, 0.92, 0.66]].forEach(([st, dur, hi, lo]) => {
+      const t = t0 + st, o = c.createOscillator(), o2 = c.createOscillator(), g = c.createGain(), bp = c.createBiquadFilter();
+      const vib = c.createOscillator(), vg = c.createGain();
+      o.type = 'triangle'; o2.type = 'sine';
+      o.frequency.setValueAtTime(base * hi, t); o.frequency.linearRampToValueAtTime(base * hi * 1.06, t + dur * 0.2); o.frequency.exponentialRampToValueAtTime(base * lo, t + dur);
+      o2.frequency.setValueAtTime(base * hi * 2, t); o2.frequency.exponentialRampToValueAtTime(base * lo * 2, t + dur);
+      vib.frequency.value = 9; vg.gain.value = base * 0.035; vib.connect(vg); vg.connect(o.frequency);
+      // “哇”：带通从低开到高再合上
+      bp.type = 'bandpass'; bp.Q.value = 2.2;
+      bp.frequency.setValueAtTime(700, t); bp.frequency.exponentialRampToValueAtTime(1700, t + dur * 0.35); bp.frequency.exponentialRampToValueAtTime(800, t + dur);
+      g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.32, t + 0.04); g.gain.setValueAtTime(0.32, t + dur * 0.55); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      const g2 = c.createGain(); g2.gain.value = 0.18;
+      o.connect(bp); o2.connect(g2).connect(bp); bp.connect(g).connect(out);
+      o.start(t); o2.start(t); vib.start(t); o.stop(t + dur + 0.02); o2.stop(t + dur + 0.02); vib.stop(t + dur + 0.02);
+    });
+    // 最后一声小抽泣
+    const t = t0 + 0.86, o = c.createOscillator(), g = c.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(base * 1.25, t); o.frequency.exponentialRampToValueAtTime(base * 0.95, t + 0.08);
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.06, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
+    o.connect(g).connect(out); o.start(t); o.stop(t + 0.12);
+  }
   /** 冒出来“啵嘤” */
   boing() {
     const c = this.ctx; if (!c) return; const t = c.currentTime;

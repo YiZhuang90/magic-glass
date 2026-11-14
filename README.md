@@ -1,11 +1,11 @@
-# 魔法玻璃 · v7：擦玻璃 + 混色画画 + 投水球（家用试玩版）
+# 魔法玻璃 · v8：擦玻璃 + 混色画画 + 投水球（家用试玩版）
 
 **在线试玩：<https://yizhuang90.github.io/magic-glass/>**（电脑 Chrome / Edge、iPad Safari 均可）
 
 孩子站在摄像头前隔空挥手，屏幕上有一只（或两只）**跟着真手动的卡通虚拟手**：
 
 - **🧽 擦玻璃**：玻璃被雾气或泥巴盖住，用虚拟手把玻璃擦开，露出后面的大字母、英文单词、中文和图画；擦开约 70% 就庆祝并朗读，然后换下一张。擦完后可以点 **“🎨 去给它涂颜色”**，把这张卡的线稿带进画画模式当涂色底稿。
-- **🎈 投水球**：后院草坪上，软萌小怪兽从篱笆和灌木丛后面冒出来。在篮子里握拳拿一个水球，朝怪兽挥手、张开手扔出去，打中了怪兽会被淋湿、吱吱笑着躲回去。先自由扔几次熟悉手感，然后语音出题：“打 3 号”“打字母 B”“打‘大’字”。
+- **🎈 投水球**：后院草坪上，软萌小怪兽从篱笆和灌木丛后面冒出来。在篮子里握拳拿一个水球，朝怪兽挥手、张开手扔出去，打中了怪兽会换成哭脸、掉眼泪、“哇——哇”地哭一下，然后躲回去（v8：怪兽换成了 AI 画的贴图，4 只：粉色果冻、薄荷毛球、黄色小蝙蝠、紫色小豆）。先自由扔几次熟悉手感，然后语音出题：“打 3 号”“打字母 B”“打‘大’字”。
 - **🎨 混色画画**：从左右两边的颜料罐里“抓”颜色，在画纸上涂；两种颜色涂在一起会像真颜料一样混出新颜色（红 + 黄 = 橙），每发现一种新颜色就用中英文念出来，并记在右下角的“我发现的颜色”卡上。
 
 其他特点：
@@ -28,7 +28,8 @@
 | 扔 | 朝怪兽**挥手**，同时**张开手**。方向和力度来自张手前一小段（平滑后的）手的轨迹，带一点向上的弧线。在篮子里原地张开手 = 放回去 |
 | 瞄准辅助 | 很宽松：扔出方向 ±32° 以内、或落点附近的怪兽会被自动“吸”过去；手直接在怪兽身上张开也算打中 |
 | 鼠标 / 触屏 | 在篮子上按下，拖动后松开，按拖动的速度扔出 |
-| 自由模式 | 怪兽身上没有字，打中哪只都算，每打中一次加一颗星 ⭐（没有时间限制） |
+| 打中 | 换哭脸 + 抖一抖 + 抽泣，脸上掉眼泪，配一声短短的委屈哭声（约 0.9 秒），哭约 1.5 秒后缩回去。打错（目标模式里打了别的）不会哭，而是笑着跳开 |
+| 自由模式 | 怪兽肚皮上只有一个小爱心，打中哪只都算，每打中一次加一颗星 ⭐（没有时间限制） |
 | 目标模式 | 自由模式打中 5 次（可调）后语音说“现在试试打 3 号！”。屏幕上 3–4 只怪兽身上有大字，顶部题目牌显示要打的字。打对：彩虹水花 + 表扬 + 下一题（不会连续两次同一个）；打错：怪兽咯咯笑着跳开，不扣分；约 8 秒没打中会再说一遍（也可以把手停在“🔊 再听”上）。要打的那只一直留在画面里 |
 
 家长设置 → “投水球”：怪兽身上的字（数字 1–10 / 大写字母 / 常见汉字 / 混合）、跳过自由练习、自由练习打中几次后出题。
@@ -172,16 +173,19 @@ js/paint/paintCanvas.js  湿颜料画布（颜料网格、笔触纹理、湿亮�
 js/ui/hoverUI.js         手停留触发的按钮
 js/game/                 homeMode.js 首页、wipeMode.js 擦玻璃、paintMode.js 混色画画、throwMode.js 投水球
 js/game/throwLogic.js    投水球纯逻辑：出手速度估计、瞄准辅助、题库 / 目标选择、语音题目
-js/render/throwArt.js    后院场景（分层缓存）、软萌怪兽、水球、篮子
+js/render/throwArt.js    后院场景（分层缓存）、怪兽（贴图 + 肚皮上的字 / 爱心；贴图没加载好时用程序绘制的旧怪兽）、眼泪、水球、篮子
+js/render/monsterSprites.js 怪兽贴图预加载（WebP，失败退回 PNG）、按画出来的大小预缩放缓存、每只的肚皮位置
+assets/monsters/         4 只怪兽 × 开心 / 哭脸贴图（WebP + PNG，最长边 384px）
+tools/cut_monsters.py    把 AI 生成的白底原图抠成透明贴图并测出肚皮位置
 js/vendor/               mixbox.esm.js 及其许可证
 js/audio/                合成音效、Web Speech 朗读
 js/content/cards.js      10 张内置卡片 + 家长上传的图片
-tests/                   node tests/throw.test.mjs（投水球逻辑）、python3 tests/e2e_v6.py（投水球：假手拿 / 挥 / 张开打中、自由 → 目标、打对 / 打错、安全区边上拿水球）、node tests/unit.test.mjs、node tests/pose.test.mjs（手势）、node tests/mix.test.mjs、python3 tests/e2e_v2.py、python3 tests/e2e_v3.py（画画手势 / 橡皮擦）、python3 tests/e2e_mouse_hide.py（看到真手时隐藏鼠标手）、node tests/players.test.mjs（玩家 / 安全区）、python3 tests/e2e_v4.py（两人左右手 / 安全区）、python3 tests/e2e_ipad.py <网址> [webkit|chromium]（iPad Safari 模拟：触摸、缩放、摄像头属性、声音解锁、模型加载）、python3 tests/perf_camera.py（真模型 + 假摄像头）、python3 tests/perf.py
+tests/                   node tests/throw.test.mjs（投水球逻辑）、python3 tests/e2e_v6.py（投水球：假手拿 / 挥 / 张开打中、自由 → 目标、打对 / 打错、安全区边上拿水球）、python3 tests/e2e_v8.py（怪兽贴图、打中哭、打错不哭）、node tests/unit.test.mjs、node tests/pose.test.mjs（手势）、node tests/mix.test.mjs、python3 tests/e2e_v2.py、python3 tests/e2e_v3.py（画画手势 / 橡皮擦）、python3 tests/e2e_mouse_hide.py（看到真手时隐藏鼠标手）、node tests/players.test.mjs（玩家 / 安全区）、python3 tests/e2e_v4.py（两人左右手 / 安全区）、python3 tests/e2e_ipad.py <网址> [webkit|chromium]（iPad Safari 模拟：触摸、缩放、摄像头属性、声音解锁、模型加载）、python3 tests/perf_camera.py（真模型 + 假摄像头）、python3 tests/perf.py
 ```
 
 ## 许可证说明（第三方）
 
-本项目自己的代码供家庭 / 学习使用。第三方部分：
+本项目自己的代码供家庭 / 学习使用。投水球的小怪兽图（`assets/monsters/`）是为本项目用 AI 生成的原创图，随项目一起使用。第三方部分：
 
 - **Mixbox 2.0**（`js/vendor/mixbox.esm.js`，Secret Weapons）：**CC BY-NC 4.0，仅限非商业使用**，许可证原文见 `js/vendor/MIXBOX_LICENSE.txt`。
 - **MediaPipe Tasks Vision** 1.2.3（运行时从 jsDelivr CDN 加载）及 HandLandmarker、BlazeFace 模型（从 storage.googleapis.com 加载）：Apache License 2.0，本仓库不包含其副本。

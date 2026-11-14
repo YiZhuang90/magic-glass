@@ -6,13 +6,15 @@
 // 安全区：所有元素（篮子、怪兽、标签、按钮）都放在离屏幕边一段距离的范围里；篮子的感应区一直延伸到屏幕下沿，
 // 孩子手放得很低（被安全区夹在屏幕底边）也能拿到水球，不需要把手伸出摄像头识别范围。
 import { releaseVelocity, throwPlan, aimAssist, labelPool, pickLabel, pickTarget, promptParts } from './throwLogic.js';
-import { sceneLayout, drawSky, drawMid, drawBushes, drawMonster, drawBalloon, drawBasket, MONSTER_COLORS, BALLOON_COLORS, LABEL_FONT } from '../render/throwArt.js';
+import { sceneLayout, drawSky, drawMid, drawBushes, drawMonster, drawBalloon, drawBasket, monsterBox, tearPoints, drawTear, MONSTER_COLORS, BALLOON_COLORS, LABEL_FONT } from '../render/throwArt.js';
+import { preloadMonsters, MONSTER_KINDS } from '../render/monsterSprites.js';
 import { roundRect, star, EMOJI_FONT } from '../render/cardArt.js';
 
 const GRAB_SEC = 0.12;          // 真手握拳在篮子上停这么久就拿起（防止路过时误拿）
 const LOST_DROP_SEC = 0.5;      // 拿着水球的真手丢失这么久 → 水球放回篮子
 const CANCEL_SPEED = 0.3;       // 在篮子里张开手、手几乎没动：当作放回去，不扔（单位：画面短边 / 秒）
 const REPEAT_SEC = 8;           // 多久没打中就再说一遍题目
+const CRY_SEC = 1.5;            // 被打中后哭多久，然后缩回去
 const RAINBOW = ['#ff4d6d', '#ff9f1c', '#ffd60a', '#52d273', '#3a86ff', '#8338ec'];
 const PRAISE = { zh: ['打中啦！', '真棒！', '好厉害！', '太准了！'], en: ['Great shot!', 'Yay!', 'Awesome!', 'Nice throw!'] };
 
@@ -26,11 +28,13 @@ export class ThrowMode {
     this.hits = 0; this.freeHits = 0; this.throws = 0; this.phase = 'free';
     this.target = null; this.lastTargetText = null; this.promptAt = 0; this.promptDue = -1; this.lead = false;
     this.walk = true; this.rng = Math.random; this.starPulse = 0; this._content = null;
+    this.tears = [];
+    preloadMonsters(); // 小怪兽贴图（没加载好时自动用程序绘制的旧怪兽）
   }
 
   enter() {
     this.t = 0; this.hits = 0; this.freeHits = 0; this.throws = 0;
-    this.balloons = []; this.parts = []; this.decals = []; this.flyStars = []; this.held.clear();
+    this.balloons = []; this.parts = []; this.decals = []; this.flyStars = []; this.tears = []; this.held.clear();
     this._content = this.settings.throwContent || 'num';
     this.phase = this.settings.throwSkipFree ? 'target' : 'free';
     this._layout(); this._buttons();
@@ -84,7 +88,7 @@ export class ThrowMode {
   // ---------- 怪兽 ----------
   _newMonster(i, delay) {
     const m = { id: i, col: MONSTER_COLORS[i % MONSTER_COLORS.length], variant: i, state: 'hidden', timer: delay, rise: 0, x: 0, cy: 0, r: 1, row: null,
-      vx: 0, wet: 0, mood: 'happy', moodT: 0, label: null, life: 0, t: this.rng() * 10, squash: 0, tilt: 0, dodge: null, blink: false };
+      vx: 0, wet: 0, mood: 'happy', moodT: 0, label: null, life: 0, t: this.rng() * 10, squash: 0, tilt: 0, dodge: null, blink: false, kind: i % MONSTER_KINDS.length, sob: 0, hitT: 0, tearT: 0 };
     return m;
   }
 
@@ -104,6 +108,10 @@ export class ThrowMode {
     }
     m.row = row; m.x = best; m.r = row.r;
     m.col = MONSTER_COLORS[Math.floor(this.rng() * MONSTER_COLORS.length)]; m.variant = Math.floor(this.rng() * 6);
+    // 贴图种类：尽量和画面上的其它怪兽不一样
+    const used = new Set(others.map(o => o.kind)), free = MONSTER_KINDS.map((_, k) => k).filter(k => !used.has(k));
+    const pool = free.length ? free : MONSTER_KINDS.map((_, k) => k);
+    m.kind = pool[Math.floor(this.rng() * pool.length)]; m.sob = 0;
     m.vx = (this.rng() < 0.5 ? -1 : 1) * this.W * (0.02 + this.rng() * 0.025);
     m.state = 'rise'; m.rise = 0; m.wet = 0; m.mood = 'surprise'; m.moodT = 0.5; m.dodge = null;
     m.life = this.phase === 'free' ? 6 + this.rng() * 4 : 12 + this.rng() * 8;
@@ -134,7 +142,14 @@ export class ThrowMode {
       const row = m.row;
       if (m.state === 'hidden') { m.timer -= dt; if (m.timer <= 0) this._spawn(m); continue; }
       if (m.state === 'rise') { m.rise = Math.min(1, m.rise + dt / 0.45); if (m.rise >= 1) { m.state = 'up'; m.squash = 0.8; } }
-      else if (m.state === 'hit') { m.timer -= dt; if (m.timer <= 0) m.state = 'duck'; }
+      else if (m.state === 'hit') {
+        // 哭：换哭脸、抖一抖、一抽一抽地抽泣，眼泪往下掉
+        m.timer -= dt; m.hitT += dt;
+        m.sob = Math.max(0, Math.sin(m.hitT * 11)) * 0.07 * Math.min(1, m.hitT * 4);
+        m.tearT -= dt;
+        if (m.tearT <= 0) { m.tearT = 0.09; this._emitTears(m); }
+        if (m.timer <= 0) { m.state = 'duck'; m.sob = 0; }
+      }
       else if (m.state === 'duck') { m.rise = Math.max(0, m.rise - dt / 0.35); if (m.rise <= 0) { m.state = 'hidden'; m.timer = 0.6 + this.rng() * 0.8; m.label = null; if (this.target === m) this.target = null; } }
       else if (m.state === 'up') {
         m.life -= dt;
@@ -151,6 +166,10 @@ export class ThrowMode {
         const d = m.dodge; d.t += dt; const k = Math.min(1, d.t / 0.4);
         m.x = Math.max(row.x0, Math.min(row.x1, d.x0 + d.dx * ease(k)));
         if (k >= 1) { m.dodge = null; m.vx = Math.sign(d.dx) * Math.abs(m.vx); }
+      }
+      if (m.state === 'hit') {
+        m.tilt = Math.sin(m.hitT * 38) * 0.09 * Math.exp(-m.hitT * 3.5) + Math.sin(m.hitT * 7) * 0.03;
+        m.cy = row.hideY + (row.upY - row.hideY) * ease(m.rise); continue;
       }
       m.tilt = Math.sin(m.t * 5) * 0.06 + (m.dodge ? Math.sign(m.dodge.dx) * 0.2 : 0);
       const hop = m.dodge ? Math.sin(Math.min(1, m.dodge.t / 0.4) * Math.PI) * m.r * 0.6 : Math.abs(Math.sin(m.t * 6)) * m.r * 0.05;
@@ -278,10 +297,12 @@ export class ThrowMode {
   _hit(m, b) {
     const correct = this.phase === 'free' || (this.target && m === this.target);
     const rainbow = this.phase === 'target' && correct;
-    m.wet = 1; m.squash = 1; m.mood = 'wet'; m.moodT = 1;
-    m.state = 'hit'; m.timer = 0.75;
+    m.wet = 1; m.squash = 1; m.mood = 'cry'; m.moodT = CRY_SEC; m.hitT = 0; m.tearT = 0.15;
+    m.state = 'hit'; m.timer = CRY_SEC;
     this._splash(m.x, m.cy, rainbow, null, m.r);
-    this.sfx.splash(true); this.sfx.eek?.(); setTimeout(() => this.sfx.giggle?.(), 260);
+    // 被打中就哭（哭脸 + 掉眼泪 + 委屈的“哇——哇”）
+    for (const [tx, ty] of tearPoints(m)) for (let k = 0; k < 2; k++) this._squirtTear(m, tx, ty);
+    this.sfx.splash(true); setTimeout(() => this.sfx.cry?.(), 140);
     this.promptAt = this.t;
     if (!correct) { this.bus.emit('throw:neutral', { label: m.label?.text }); return; } // 目标模式里还没出题时打中：不计分
     this.hits++; this.starPulse = 1;
@@ -345,6 +366,35 @@ export class ThrowMode {
     }
   }
 
+  // ---------- 眼泪粒子 ----------
+  /** 脸颊上掉下来的眼泪（大部分往下落，少数往两边飞） */
+  _emitTears(m) {
+    if (this.tears.length > 40) return;
+    const pts = tearPoints(m), s = m.r / 50;
+    for (const [i, [x, y]] of pts.entries()) {
+      if (this.rng() < 0.25) { this._squirtTear(m, x, y); continue; }
+      const side = i ? 1 : -1;
+      this.tears.push({ x: x + side * this.rng() * 3 * s, y, vx: side * (10 + this.rng() * 25) * s, vy: (20 + this.rng() * 30) * s, s: (4.2 + this.rng() * 1.8) * s, life: 0.7, max: 0.7 });
+    }
+  }
+  _squirtTear(m, x, y) {
+    const s = m.r / 50, side = x < m.x ? -1 : 1;
+    this.tears.push({ x, y: y - 6 * s, vx: side * (90 + this.rng() * 90) * s, vy: -(80 + this.rng() * 90) * s, s: (4.8 + this.rng() * 2) * s, life: 0.75, max: 0.75 });
+  }
+  _updateTears(dt) {
+    const g = 900 * this.u / 900;
+    for (const p of this.tears) { p.life -= dt; p.vy += g * dt; p.x += p.vx * dt; p.y += p.vy * dt; }
+    if (this.tears.length) this.tears = this.tears.filter(p => p.life > 0);
+  }
+  _renderTears(ctx) {
+    if (!this.tears.length) return;
+    ctx.fillStyle = '#7cc8ff';
+    for (const p of this.tears) { ctx.globalAlpha = Math.min(1, p.life / 0.25); drawTear(ctx, p.x, p.y, p.s); }
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    for (const p of this.tears) { ctx.globalAlpha = Math.min(1, p.life / 0.25); ctx.fillRect(p.x - p.s * 0.45, p.y - p.s * 0.5, p.s * 0.35, p.s * 0.35); }
+    ctx.globalAlpha = 1;
+  }
+
   // ---------- 水花粒子 ----------
   _splash(x, y, rainbow, surface, r = this.u * 0.06) {
     const n = rainbow ? 46 : 28, s = this.u / 900;
@@ -378,6 +428,7 @@ export class ThrowMode {
     this._updateBalloons(dt);
     this._updatePrompt();
     this._updateParts(dt);
+    this._updateTears(dt);
     this.effects.update(dt);
     this.hoverBasket = hands.some(h => !this.held.has(h.id) && (h.source === 'hand' || !h.consumed) && this._inBasket(h.palm[0], h.palm[1]));
     const rep = this.ui.get('repeat'); if (rep) rep.visible = this.phase === 'target' && !!this.target;
@@ -400,6 +451,7 @@ export class ThrowMode {
     this._renderDecals(ctx);
     for (const m of this.monsters) if (m.state !== 'hidden' && m.row.id === 'near') drawMonster(ctx, m);
     ctx.drawImage(this.layers.bush, 0, 0);
+    this._renderTears(ctx);
     drawBasket(ctx, this.basket, this.t, this.hoverBasket);
     if (!this.throws && !this.held.size) this._basketHint(ctx);
     for (const b of this.balloons) drawBalloon(ctx, b.x, b.y, b.r, b.color, b.u * 3);
@@ -470,7 +522,7 @@ export class ThrowMode {
   /** 所有可见元素的包围盒（用于检查都在安全范围内） */
   debugBounds() {
     const out = [];
-    for (const m of this.monsters) if (m.state !== 'hidden') out.push({ id: 'm' + m.id, x: m.x - m.r * 1.05, y: m.cy - m.r * 1.45, w: m.r * 2.1, h: m.r * 2.6 });
+    for (const m of this.monsters) if (m.state !== 'hidden') out.push({ id: 'm' + m.id, ...monsterBox(m) });
     out.push({ id: 'basket', ...this.basket });
     for (const b of this.ui.buttons) if (b.visible !== false) out.push({ id: b.id, x: b.x, y: b.y, w: b.w, h: b.h });
     const [cx, cy] = this._counterPos(); out.push({ id: 'stars', x: cx - this.W * 0.065, y: cy - this.H * 0.0375, w: this.W * 0.13, h: this.H * 0.075 });

@@ -58,7 +58,10 @@ with sync_playwright() as p:
         k = pg.evaluate('document.querySelector("#stage").width / innerWidth')
         red = pg.evaluate('(()=>{const p=__mg.mode.pots.find(p=>p.id=="red"); return [(p.x+p.w/2), (p.y+p.h/2)]})()')
         pg.mouse.move(red[0] / k, red[1] / k); pg.mouse.down(); pg.wait_for_timeout(800); pg.mouse.up()
-        pg.mouse.move(400, 300); pg.mouse.down(); pg.mouse.move(700, 350, steps=12); pg.mouse.up()
+        # 拖动要跨好几帧（WebKit 里同步连发的 mousemove 可能落在同一帧，画笔还没“落下”就松开了）
+        pg.mouse.move(400, 300); pg.mouse.down(); pg.wait_for_timeout(150)
+        for i in range(12): pg.mouse.move(400 + 25 * i, 300 + 4 * i); pg.wait_for_timeout(30)
+        pg.mouse.up()
         check('paint_works_in_webkit', pg.evaluate('__mg.mode.canvas.amt.reduce((a,b)=>a+b,0)') > 0)
         pg.screenshot(path=f'{SH}/v5_webkit_02_paint.png')
         # 投水球在 WebKit 里能玩：鼠标在篮子上按下 → 往上拖 → 松开

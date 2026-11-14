@@ -3,5 +3,5 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 rm -rf dist && mkdir -p dist
-cp -r index.html css js .nojekyll dist/
+cp -r index.html css js assets .nojekyll dist/
 echo "dist/ 已生成：$(find dist -type f | wc -l) 个文件"
