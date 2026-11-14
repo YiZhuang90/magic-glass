@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <!-- iPad / iPhone：加到主屏幕后全屏运行，不显示 Safari 地址栏 -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="魔法玻璃" />
+  <meta name="theme-color" content="#cfdbe5" />
+  <meta name="format-detection" content="telephone=no" />
+  <title>魔法玻璃 · 擦玻璃</title>
+  <meta name="description" content="幼儿体感互动：挥挥手擦开魔法玻璃。摄像头画面只在本机识别，不录像、不上传。" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪟</text></svg>" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <canvas id="stage" aria-label="魔法玻璃画面"></canvas>
+
+  <!-- 首屏 -->
+  <section id="start" class="overlay">
+    <div class="start-card">
+      <div class="logo">🪟✨</div>
+      <h1>魔法玻璃</h1>
+      <p class="sub">挥挥手擦玻璃，抓颜料画画！</p>
+      <button id="btnStart" class="big-btn">开始</button>
+      <button id="btnMouse" class="link-btn">没有摄像头？用鼠标 / 触屏玩</button>
+      <p id="startStatus" class="status"></p>
+      <p class="privacy">🔒 摄像头画面只在这台电脑上识别手的位置，不录像、不保存、不上传。</p>
+    </div>
+  </section>
+
+  <!-- 家长设置入口：长按 1 秒打开（孩子不易误触），或按键盘 P -->
+  <button id="gear" title="家长设置（长按 1 秒，或按 P 键）" aria-label="家长设置"><span>⚙️</span><i class="ring"></i></button>
+
+  <!-- 家长设置面板 -->
+  <aside id="settings" class="panel hidden" aria-label="家长设置">
+    <header><h2>家长设置</h2><button id="btnClose" class="icon-btn" aria-label="关闭">✕</button></header>
+
+    <div class="row">
+      <label>玩法</label>
+      <div class="seg" id="modeSeg">
+        <button data-mode="home">🏠 首页</button>
+        <button data-mode="wipe">🧽 擦玻璃</button>
+        <button data-mode="paint">🎨 混色画画</button>
+      </div>
+    </div>
+    <div class="row">
+      <label>玻璃上是</label>
+      <div class="seg" id="coverSeg">
+        <button data-cover="fog">☁️ 雾气</button>
+        <button data-cover="mud">🟤 泥巴</button>
+      </div>
+    </div>
+    <div class="row"><label for="brush">笔刷大小 <b id="brushVal"></b></label><input id="brush" type="range" min="0.5" max="2" step="0.1" /></div>
+    <div class="row"><label for="threshold">擦开多少过关 <b id="thresholdVal"></b></label><input id="threshold" type="range" min="0.4" max="0.95" step="0.05" /></div>
+    <div class="row inline"><label for="refog">慢慢重新起雾</label><input id="refog" type="checkbox" /></div>
+    <div class="row">
+      <label for="lang">朗读语言</label>
+      <select id="lang"><option value="both">中英双语</option><option value="zh">中文</option><option value="en">英文</option></select>
+    </div>
+    <div class="row"><label for="volume">音量 <b id="volumeVal"></b></label><input id="volume" type="range" min="0" max="1" step="0.05" /></div>
+
+    <h3>摄像头与手</h3>
+    <div class="row">
+      <label>摆放方式</label>
+      <div class="seg" id="displaySeg">
+        <button data-display="screen">🖥️ 屏幕模式</button>
+        <button data-display="projector">📽️ 投影模式</button>
+      </div>
+      <p class="hint">屏幕模式：摄像头放在屏幕上方对着孩子，孩子隔空挥手。投影模式：用四角标定对齐投影画面。</p>
+    </div>
+    <div class="screen-only">
+      <div class="row"><label for="safeMargin">安全区边距 <b id="safeMarginVal"></b></label><input id="safeMargin" type="range" min="0" max="0.3" step="0.01" /></div>
+      <div class="row"><label for="safeBottom">下边多留 <b id="safeBottomVal"></b></label><input id="safeBottom" type="range" min="0" max="0.2" step="0.01" /></div>
+      <p class="hint">只用摄像头画面中间的一块（打开“小预览”能看到黄框）。边距越大，孩子手动一点点，虚拟手就走得越远，更容易碰到屏幕四边的颜料罐和按钮。</p>
+    </div>
+    <div class="row"><label for="handScale">虚拟手大小 <b id="handScaleVal"></b></label><input id="handScale" type="range" min="0.7" max="1.5" step="0.1" /></div>
+    <div class="row">
+      <label for="camera">摄像头</label>
+      <select id="camera"><option value="">默认摄像头</option></select>
+    </div>
+    <div class="row inline"><label for="players">区分玩家（每个人的左右手各记各的颜色）</label><input id="players" type="checkbox" /></div>
+    <p class="hint">只检测人脸的位置框来分辨“这只手是谁的”，不认人、不保存也不上传任何画面。</p>
+    <div class="row">
+      <label for="maxHands">最多识别几只手</label>
+      <select id="maxHands"><option value="2">2 只（1 个人）</option><option value="4">4 只（2 个人，默认）</option></select>
+    </div>
+    <div class="row inline"><label for="preview">显示小预览（调试用）</label><input id="preview" type="checkbox" /></div>
+    <div class="btns projector-only">
+      <button id="btnCalibPoint">✋ 手指指四角标定</button>
+      <button id="btnCalibDrag">🖱️ 鼠标拖动可玩区域</button>
+      <button id="btnCalibReset">重置为全画面</button>
+    </div>
+    <p id="calibState" class="hint projector-only"></p>
+
+    <h3>隐藏内容</h3>
+    <div class="btns">
+      <label class="file-btn">🖼️ 上传孩子的画<input id="upload" type="file" accept="image/*" /></label>
+      <button id="btnClearUpload">删除上传的画</button>
+    </div>
+    <p class="hint">图片只保存在这台电脑的浏览器里，会作为每一轮的最后一张。</p>
+
+    <h3>其他</h3>
+    <div class="btns">
+      <button id="btnNext">⏭ 下一张</button>
+      <button id="btnFullscreen">⛶ 全屏</button>
+    </div>
+    <div class="row inline"><label for="perf">性能浮层（F 键）</label><input id="perf" type="checkbox" /></div>
+    <details class="adv"><summary>高级</summary>
+      <div class="row">
+        <label for="renderMax">内部渲染分辨率（最长边）</label>
+        <select id="renderMax"><option value="1024">1024 px（最省）</option><option value="1280">1280 px</option><option value="1440">1440 px（默认）</option><option value="1600">1600 px</option><option value="1920">1920 px</option></select>
+        <p class="hint">画布按这个分辨率绘制，再用 CSS 拉伸到全屏。数值越小越流畅。</p>
+      </div>
+    </details>
+    <p id="diag" class="hint mono"></p>
+  </aside>
+
+  <!-- 标定 -->
+  <section id="calib" class="overlay hidden">
+    <p id="calibText" class="calib-text"></p>
+    <div id="calibDrag">
+      <div id="calibVideoSlot"></div>
+      <canvas id="calibDragCanvas"></canvas>
+    </div>
+    <div class="calib-btns">
+      <button id="calibResetQuad" class="drag-only">恢复默认框</button>
+      <button id="calibSave" class="drag-only primary">保存</button>
+      <button id="calibCancel">取消</button>
+    </div>
+  </section>
+
+  <!-- 调试小预览（默认隐藏） -->
+  <div id="previewBox" class="collapsed">
+    <video id="video" playsinline webkit-playsinline muted autoplay></video>
+    <canvas id="previewCanvas"></canvas>
+  </div>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+  <pre id="perfBox" class="hidden"></pre>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
