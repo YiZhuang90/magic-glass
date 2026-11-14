@@ -20,6 +20,9 @@ export const DEFAULTS = {
   handScale: 1,          // 虚拟手大小
   renderMax: 1440,       // 高级：内部画布最长边（像素），CSS 拉伸到全屏
   perfOverlay: false,
+  throwContent: 'num',   // 投水球目标模式的标签：'num' 数字 1–10 | 'letter' 大写字母 | 'hanzi' 常见汉字 | 'mix' 混合
+  throwSkipFree: false,  // 跳过自由模式，直接出题
+  throwFreeHits: 5,      // 自由模式打中几次后开始出题
 };
 
 const REV = 4; // 设置版本：v4 起最多 4 只手、安全区替代旧的“有效区域大小 / 上下位置”

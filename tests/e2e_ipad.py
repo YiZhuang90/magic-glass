@@ -62,6 +62,14 @@ with sync_playwright() as p:
         pg.mouse.move(400, 300); pg.mouse.down(); pg.mouse.move(700, 350, steps=12); pg.mouse.up()
         check('paint_works_in_webkit', pg.evaluate('__mg.mode.canvas.amt.reduce((a,b)=>a+b,0)') > 0)
         pg.screenshot(path=f'{SH}/v5_webkit_02_paint.png')
+        # 投水球在 WebKit 里能玩：鼠标在篮子上按下 → 往上拖 → 松开
+        pg.evaluate('__mg.goMode("throw")'); pg.wait_for_timeout(1500)
+        bk = pg.evaluate('(()=>{const b=__mg.mode.basket; return [b.x+b.w/2, b.y+b.h/2]})()')
+        pg.mouse.move(bk[0] / k, bk[1] / k); pg.mouse.down(); pg.wait_for_timeout(100)
+        held = pg.evaluate('__mg.mode.held.size')
+        pg.mouse.move(bk[0] / k, bk[1] / k - 250, steps=6); pg.mouse.up(); pg.wait_for_timeout(150)
+        check('throw_mode_webkit_grab_and_throw', held == 1 and pg.evaluate('__mg.mode.throws') == 1, [held, pg.evaluate('__mg.mode.throws')])
+        pg.wait_for_timeout(900); pg.screenshot(path=f'{SH}/v6_webkit_ipad_throw.png')
     else:
         cdp = ctx.new_cdp_session(pg)
         def touch(kind, pts): cdp.send('Input.dispatchTouchEvent', {'type': kind, 'touchPoints': [{'x': x, 'y': y, 'id': 1} for x, y in pts]})
@@ -80,6 +88,16 @@ with sync_playwright() as p:
         a = pg.evaluate('__mg.mode.canvas.amt.reduce((a,b)=>a+b,0)')
         check('touch_drag_paints', a > 0, round(a, 1))
         check('no_zoom_after_touch', pg.evaluate('visualViewport.scale') == 1 and pg.evaluate('[scrollX, scrollY]') == [0, 0])
+        # 投水球：手指在篮子上按下 → 拖动 → 抬起 = 扔出
+        pg.evaluate('__mg.goMode("throw")'); pg.wait_for_timeout(1200)
+        bk = pg.evaluate('(()=>{const b=__mg.mode.basket; return [b.x+b.w/2, b.y+b.h/2]})()'); bx, by = bk[0] / k, bk[1] / k
+        touch('touchStart', [(bx, by)]); pg.wait_for_timeout(120)
+        held = pg.evaluate('__mg.mode.held.size')
+        for i in range(1, 9): touch('touchMove', [(bx, by - i * 30)]); pg.wait_for_timeout(16)
+        touch('touchEnd', []); pg.wait_for_timeout(150)
+        check('touch_throw_grab_and_release', held == 1 and pg.evaluate('__mg.mode.throws') == 1 and pg.evaluate('__mg.mode.held.size') == 0, [held, pg.evaluate('__mg.mode.throws')])
+        check('touch_throw_goes_up', pg.evaluate('__mg.mode.lastThrow.v[1]') < 0, pg.evaluate('__mg.mode.lastThrow'))
+        pg.wait_for_timeout(900); pg.evaluate('__mg.goMode("paint")'); pg.wait_for_timeout(300)
         # 摄像头看到真手：按住不动的触点手隐藏，移动后回来
         pg.evaluate(open(os.path.join(HERE, 'fake_hands.js')).read())
         touch('touchStart', [(500, 600)]); pg.wait_for_timeout(200)

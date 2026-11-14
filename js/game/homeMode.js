@@ -1,4 +1,4 @@
-// 首页：两张大卡片选择玩法。手悬停 1 秒或鼠标点击。
+// 首页：三张大卡片选择玩法。手悬停 1 秒或鼠标点击。
 import { roundRect, canvas, EMOJI_FONT } from '../render/cardArt.js';
 
 export class HomeMode {
@@ -9,10 +9,12 @@ export class HomeMode {
   applySettings(s) { this.settings = s; }
 
   _buttons() {
-    const { W, H } = this, cw = W * 0.34, ch = H * 0.56, y = H * 0.3;
+    // 三张卡片排在中间，左右离屏幕边都留出一段（安全区）
+    const { W, H } = this, gap = W * 0.035, cw = W * 0.27, ch = H * 0.56, y = H * 0.3, x0 = (W - 3 * cw - 2 * gap) / 2;
     this.ui.set([
-      { id: 'wipe', title: '擦玻璃', sub: '挥挥手，擦开雾气', icon: '🧽', colors: ['#8ec5fc', '#e0c3fc'], x: W * 0.12, y, w: cw, h: ch, dwell: 1, customDraw: true, onActivate: () => this.app.goMode('wipe') },
-      { id: 'paint', title: '混色画画', sub: '抓颜料，调新颜色', icon: '🎨', colors: ['#fbc2eb', '#ffd86f'], x: W * 0.54, y, w: cw, h: ch, dwell: 1, customDraw: true, onActivate: () => this.app.goMode('paint') },
+      { id: 'wipe', title: '擦玻璃', sub: '挥挥手，擦开雾气', icon: '🧽', colors: ['#8ec5fc', '#e0c3fc'], x: x0, y, w: cw, h: ch, dwell: 1, customDraw: true, onActivate: () => this.app.goMode('wipe') },
+      { id: 'paint', title: '混色画画', sub: '抓颜料，调新颜色', icon: '🎨', colors: ['#fbc2eb', '#ffd86f'], x: x0 + cw + gap, y, w: cw, h: ch, dwell: 1, customDraw: true, onActivate: () => this.app.goMode('paint') },
+      { id: 'throw', title: '投水球', sub: '拿水球，打小怪兽', icon: '🎈', colors: ['#a1ffce', '#faffd1'], x: x0 + 2 * (cw + gap), y, w: cw, h: ch, dwell: 1, customDraw: true, onActivate: () => this.app.goMode('throw') },
     ]);
   }
 

@@ -108,5 +108,57 @@ export class Sfx {
     o.connect(g).connect(this.master); o.start(t); o.stop(t + 0.2);
   }
 
+  // ---------- 投水球 ----------
+  /** 扔出去“嗖” */
+  swoosh() {
+    const c = this.ctx; if (!c) return; const t = c.currentTime;
+    const src = c.createBufferSource(); src.buffer = this._noiseBuf || (this._noiseBuf = this._noiseBuffer(1));
+    const f = c.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 1.2;
+    f.frequency.setValueAtTime(700, t); f.frequency.exponentialRampToValueAtTime(2600, t + 0.25);
+    const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.22, t + 0.06); g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+    src.connect(f).connect(g).connect(this.master); src.start(t); src.stop(t + 0.4);
+  }
+  /** 水花“啪嚓”：噪声爆破 + 一串小水滴音 */
+  splash(big = false) {
+    const c = this.ctx; if (!c) return; const t = c.currentTime;
+    const src = c.createBufferSource(); src.buffer = this._noiseBuf || (this._noiseBuf = this._noiseBuffer(1));
+    const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(5000, t); f.frequency.exponentialRampToValueAtTime(600, t + 0.4);
+    const g = c.createGain(); g.gain.setValueAtTime(big ? 0.5 : 0.38, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+    src.connect(f).connect(g).connect(this.master); src.start(t); src.stop(t + 0.5);
+    for (let i = 0; i < (big ? 6 : 4); i++) {
+      const o = c.createOscillator(), og = c.createGain(), st = t + 0.04 + i * 0.05 + Math.random() * 0.03, f0 = 900 + Math.random() * 900;
+      o.type = 'sine'; o.frequency.setValueAtTime(f0, st); o.frequency.exponentialRampToValueAtTime(f0 * 1.8, st + 0.06);
+      og.gain.setValueAtTime(0.06, st); og.gain.exponentialRampToValueAtTime(0.0001, st + 0.08);
+      o.connect(og).connect(this.master); o.start(st); o.stop(st + 0.1);
+    }
+  }
+  /** 小怪兽咯咯笑：几声快速上下滑的高音 */
+  giggle() {
+    const c = this.ctx; if (!c) return; const t = c.currentTime + 0.05, base = 620 + Math.random() * 160;
+    for (let i = 0; i < 5; i++) {
+      const o = c.createOscillator(), g = c.createGain(), st = t + i * 0.09;
+      o.type = 'triangle'; o.frequency.setValueAtTime(base * (1 + i * 0.06), st); o.frequency.exponentialRampToValueAtTime(base * 1.45 * (1 + i * 0.06), st + 0.035); o.frequency.exponentialRampToValueAtTime(base * 0.9, st + 0.075);
+      g.gain.setValueAtTime(0, st); g.gain.linearRampToValueAtTime(0.13, st + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, st + 0.08);
+      o.connect(g).connect(this.master); o.start(st); o.stop(st + 0.1);
+    }
+  }
+  /** 被打湿“吱！” */
+  eek() {
+    const c = this.ctx; if (!c) return; const t = c.currentTime;
+    const o = c.createOscillator(), g = c.createGain(), l = c.createOscillator(), lg = c.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(900, t); o.frequency.exponentialRampToValueAtTime(1900, t + 0.12); o.frequency.exponentialRampToValueAtTime(1300, t + 0.28);
+    l.frequency.value = 28; lg.gain.value = 70; l.connect(lg).connect(o.frequency);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.16, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+    o.connect(g).connect(this.master); o.start(t); l.start(t); o.stop(t + 0.35); l.stop(t + 0.35);
+  }
+  /** 冒出来“啵嘤” */
+  boing() {
+    const c = this.ctx; if (!c) return; const t = c.currentTime;
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(260, t); o.frequency.exponentialRampToValueAtTime(520, t + 0.12); o.frequency.exponentialRampToValueAtTime(380, t + 0.22);
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.07, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+    o.connect(g).connect(this.master); o.start(t); o.stop(t + 0.3);
+  }
+
   pop() { if (!this.ctx) return; const t = this.ctx.currentTime; this._tone(660, t, 0.15, { type: 'square', gain: 0.05 }); this._tone(990, t + 0.05, 0.2, { type: 'sine', gain: 0.1 }); }
 }

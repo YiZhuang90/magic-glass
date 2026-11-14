@@ -1,13 +1,14 @@
 // 渲染层 · 卡通虚拟手：手掌 + 五根手指，圆润、描边、半透明，与真实手的 21 个关键点一一对应。
 // 每只手先画到一张只有手那么大的离屏小画布上，再整体以半透明合成，避免重叠处颜色变深。
 import { canvas } from './cardArt.js';
+import { drawBalloon } from './throwArt.js';
 
 const FINGERS = [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16], [17, 18, 19, 20]];
 const PALM = [0, 1, 5, 9, 13, 17];
 const layers = new Map();
 
 /**
- * decor: { sponge?: 'fog'|'mud', paint?: { rgb, amount }, eraser?: bool, grab?: 0–1,
+ * decor: { balloon?: { color, t }, sponge?: 'fog'|'mud', paint?: { rgb, amount }, eraser?: bool, grab?: 0–1,
  *          tip?: { x, y, r, tool: null|'paint'|'eraser', rgb, active, pose, mouse } }
  */
 export function drawHand(ctx, hand, decor = {}) {
@@ -54,6 +55,7 @@ export function drawHand(ctx, hand, decor = {}) {
   if (decor.paint) drawPaintBall(ctx, pc[0], pc[1], S, decor.paint);
   if (decor.eraser) drawEraserIcon(ctx, pc[0], pc[1], S * 0.62);
   if (decor.tip) drawTip(ctx, decor.tip, S);
+  if (decor.balloon) drawBalloon(ctx, pc[0], pc[1] - S * 0.05, S * 0.32, decor.balloon.color, decor.balloon.t); // 投水球：手里晃动的水球
   if (hand.person) drawPlayerBadge(ctx, hand, S);
   if (decor.grab > 0) {
     ctx.save(); ctx.strokeStyle = '#fff'; ctx.lineWidth = S * 0.08; ctx.lineCap = 'round';

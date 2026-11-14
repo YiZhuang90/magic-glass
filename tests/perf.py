@@ -23,6 +23,17 @@ with sync_playwright() as p:
     pg.evaluate(REC); pg.wait_for_timeout(1500)
     idle = stats(pg.evaluate('window.__ft.splice(0)'))
     # 持续擦拭 / 涂抹约 3 秒
+    if mode == 'throw':
+        # 投水球：反复在篮子上按下 → 往上拖 → 松开（水球飞行、水花粒子、怪兽动画同时进行）
+        bk = pg.evaluate('(()=>{const b=__mg.mode.basket, k=document.querySelector("#stage").width/innerWidth; return [(b.x+b.w/2)/k, (b.y+b.h/2)/k]})()')
+        pg.evaluate('window.__ft.splice(0)'); t0 = time.time(); k = 0
+        while time.time() - t0 < 4:
+            pg.mouse.move(bk[0], bk[1]); pg.mouse.down(); pg.wait_for_timeout(60)
+            pg.mouse.move(bk[0] + (k % 5 - 2) * 120, bk[1] - 380, steps=6); pg.mouse.up(); pg.wait_for_timeout(150); k += 1
+        work = pg.evaluate('window.__perf ? +window.__perf.workMs.toFixed(2) : null')
+        active = stats(pg.evaluate('window.__ft.splice(0)'))
+        print(json.dumps({'label': label, 'canvas': info, 'idle': idle, 'active': active, 'throws': pg.evaluate('__mg.mode.throws'), 'hits': pg.evaluate('__mg.mode.hits'), 'js_work_ms_last500ms': work}, ensure_ascii=False))
+        b.close(); raise SystemExit(0)
     pg.mouse.move(300, 200); pg.mouse.down(); t0 = time.time(); k = 0
     pg.evaluate('window.__ft.splice(0)')
     while time.time() - t0 < 3:

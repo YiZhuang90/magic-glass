@@ -1,4 +1,4 @@
-// 入口：组装输入层、玩法层（首页 / 擦玻璃 / 混色画画）、渲染层、音频层，并处理首屏与家长设置。
+// 入口：组装输入层、玩法层（首页 / 擦玻璃 / 混色画画 / 投水球）、渲染层、音频层，并处理首屏与家长设置。
 import { bus } from './core/eventBus.js';
 import { loadSettings, saveSettings } from './core/settings.js';
 import { EventLog, DeviceBridge } from './core/eduHooks.js';
@@ -16,6 +16,7 @@ import { HoverUI } from './ui/hoverUI.js';
 import { HomeMode } from './game/homeMode.js';
 import { WipeMode } from './game/wipeMode.js';
 import { PaintMode } from './game/paintMode.js';
+import { ThrowMode } from './game/throwMode.js';
 
 const $ = (s) => document.querySelector(s);
 const stage = $('#stage'), ctx = stage.getContext('2d', { alpha: false });
@@ -42,7 +43,7 @@ function toast(msg, ms = 2600) {
 // 模式注册表：每个模式实现 enter / exit / resize / applySettings / update / render / handDecor
 const app = { goMode, toast };
 const shared = () => ({ effects, sfx, speech, content, bus, log, settings: { ...settings }, ui, app });
-const MODES = { home: HomeMode, wipe: WipeMode, paint: PaintMode };
+const MODES = { home: HomeMode, wipe: WipeMode, paint: PaintMode, throw: ThrowMode };
 const instances = {};
 let mode = null;
 let running = false;
@@ -68,7 +69,9 @@ function resize() {
   Q = maxSide / Math.max(w, h);
   stage.width = Math.round(w * Q); stage.height = Math.round(h * Q);
   input.resize(w, h, Q); ui.setBounds(stage.width, stage.height);
-  for (const m of Object.values(instances)) m.resize(stage.width, stage.height);
+  // 先调整后台的模式，最后调整当前模式：有的模式在 resize 里会重设悬停按钮，当前模式的按钮必须留在最后
+  for (const m of Object.values(instances)) if (m !== mode) m.resize(stage.width, stage.height);
+  mode?.resize(stage.width, stage.height);
 }
 let resizeT; const onResize = () => { clearTimeout(resizeT); resizeT = setTimeout(resize, 200); };
 window.addEventListener('resize', onResize); window.addEventListener('orientationchange', onResize);
@@ -228,6 +231,8 @@ function syncSettingsUI() {
   $('#players').checked = settings.players !== false; $('#maxHands').value = String(settings.maxHands >= 4 ? 4 : 2);
   set('handScale', settings.handScale, settings.handScale.toFixed(1) + '×');
   $('#refog').checked = settings.refog; $('#lang').value = settings.lang; $('#preview').checked = settings.showPreview;
+  $('#throwContent').value = settings.throwContent || 'num'; $('#throwSkipFree').checked = !!settings.throwSkipFree;
+  set('throwFreeHits', settings.throwFreeHits ?? 5, String(settings.throwFreeHits ?? 5));
   $('#perf').checked = settings.perfOverlay; $('#renderMax').value = String(settings.renderMax);
   syncModeSeg();
 }
@@ -240,6 +245,9 @@ num('brush', 'brushSize'); num('threshold', 'threshold'); num('volume', 'volume'
 $('#players').addEventListener('change', (e) => { settings.players = e.target.checked; commit(); tracker.setFaces(settings.players); toast(settings.players ? '已开启区分玩家' : '已关闭区分玩家（按手区分颜色）'); });
 $('#maxHands').addEventListener('change', (e) => { settings.maxHands = +e.target.value; commit(); tracker.setMaxHands(settings.maxHands); }); num('handScale', 'handScale');
 $('#refog').addEventListener('change', (e) => { settings.refog = e.target.checked; commit(); });
+$('#throwContent').addEventListener('change', (e) => { settings.throwContent = e.target.value; commit(); });
+$('#throwSkipFree').addEventListener('change', (e) => { settings.throwSkipFree = e.target.checked; commit(); });
+num('throwFreeHits', 'throwFreeHits');
 $('#lang').addEventListener('change', (e) => { settings.lang = e.target.value; commit(); });
 $('#preview').addEventListener('change', (e) => togglePreview(e.target.checked));
 $('#perf').addEventListener('change', (e) => togglePerf(e.target.checked));
