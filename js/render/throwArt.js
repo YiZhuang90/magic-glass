@@ -1,7 +1,7 @@
 // 渲染层 · 投水球：后院草坪场景、软萌小怪兽、水球、篮子。全部用 canvas 程序绘制。
 // 场景分三层缓存成离屏图（天空 / 篱笆 + 草地 / 灌木），每帧只贴图；怪兽身体按颜色和大小缓存成小图。
 import { canvas, roundRect, ZH_FONT } from './cardArt.js';
-import { MONSTER_KINDS, spritesReady, spriteFor, spriteScale } from './monsterSprites.js';
+import { MONSTER_KINDS, kindReady, spriteFor, spriteScale } from './monsterSprites.js';
 
 export const LABEL_FONT = `"Arial Rounded MT Bold","Nunito",${ZH_FONT}`;
 export const MONSTER_COLORS = [
@@ -141,7 +141,7 @@ function monsterBody(col, r, variant) {
  * 画一只怪兽。m: { x, cy（身体中心）, r, col, variant, label, wet(0–1), mood: 'happy'|'giggle'|'wet'|'surprise', t, squash, blink }
  */
 export function drawMonster(ctx, m) {
-  if (m.kind != null && spritesReady()) { const spr = spriteFor(m.kind, m.mood === 'cry' ? 'cry' : 'happy', m.r); if (spr) return drawSpriteMonster(ctx, m, spr); }
+  if (m.kind != null && kindReady(m.kind)) { const spr = spriteFor(m.kind, m.mood === 'cry' ? 'cry' : 'happy', m.r); if (spr) return drawSpriteMonster(ctx, m, spr); }
   const { r } = m, body = monsterBody(m.col, r, m.variant);
   const sq = m.squash || 0, sx = 1 + sq * 0.12, sy = 1 - sq * 0.12, tilt = m.tilt || 0;
   ctx.save();
@@ -211,7 +211,7 @@ export function bellyRect(m) {
 }
 /** 贴图怪兽的包围盒（世界坐标；脚底在 cy + 0.95r） */
 export function monsterBox(m) {
-  if (m.kind == null || !spritesReady()) return { x: m.x - m.r * 1.05, y: m.cy - m.r * 1.45, w: m.r * 2.1, h: m.r * 2.6 };
+  if (m.kind == null || !kindReady(m.kind)) return { x: m.x - m.r * 1.05, y: m.cy - m.r * 1.45, w: m.r * 2.1, h: m.r * 2.6 };
   const K = MONSTER_KINDS[m.kind], s = spriteScale(m.kind, m.r), W = K.w * s, H = K.h * s, fy = m.cy + m.r * 0.95;
   return { x: m.x - W / 2, y: fy - H * K.anchorY, w: W, h: H };
 }
@@ -223,8 +223,8 @@ function drawSpriteMonster(ctx, m, spr) {
   ctx.drawImage(spr, -spr.ax, -spr.ay);
   const b = bellyRect(m);
   if (m.label) {
-    const t = m.label.text, k = m.label.type === 'hanzi' ? 0.74 : 0.8;
-    const fs = Math.min(b.h * k, (b.w * 0.82) / (labelWidth100(ctx, t) / 100));
+    const t = m.label.text, k = m.label.type === 'hanzi' ? 0.88 : 0.98;
+    const fs = Math.min(b.h * k, (b.w * 0.95) / (labelWidth100(ctx, t) / 100));
     ctx.font = `900 ${fs}px ${LABEL_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillStyle = LABEL_INK; ctx.fillText(t, b.x, b.y + fs * 0.04);
   } else if (m.heart !== false) {
@@ -239,7 +239,7 @@ function drawSpriteMonster(ctx, m, spr) {
 }
 /** 哭的时候眼泪从哪里掉：返回左右两点（世界坐标，脸颊上眼泪流下来的位置） */
 export function tearPoints(m) {
-  if (m.kind == null || !spritesReady()) return [[m.x - m.r * 0.32, m.cy - m.r * 0.3], [m.x + m.r * 0.32, m.cy - m.r * 0.3]];
+  if (m.kind == null || !kindReady(m.kind)) return [[m.x - m.r * 0.32, m.cy - m.r * 0.3], [m.x + m.r * 0.32, m.cy - m.r * 0.3]];
   const b = bellyRect(m), fy = m.cy + m.r * 0.95, y = fy + b.y - b.h * 0.55;
   return [[m.x + b.x - b.w * 0.48, y], [m.x + b.x + b.w * 0.48, y]];
 }

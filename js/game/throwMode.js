@@ -7,7 +7,7 @@
 // 孩子手放得很低（被安全区夹在屏幕底边）也能拿到水球，不需要把手伸出摄像头识别范围。
 import { releaseVelocity, throwPlan, aimAssist, labelPool, pickLabel, pickTarget, promptParts } from './throwLogic.js';
 import { sceneLayout, drawSky, drawMid, drawBushes, drawMonster, drawBalloon, drawBasket, monsterBox, tearPoints, drawTear, MONSTER_COLORS, BALLOON_COLORS, LABEL_FONT } from '../render/throwArt.js';
-import { preloadMonsters, MONSTER_KINDS } from '../render/monsterSprites.js';
+import { preloadMonsters, MONSTER_KINDS, readyKinds } from '../render/monsterSprites.js';
 import { roundRect, star, EMOJI_FONT } from '../render/cardArt.js';
 
 const GRAB_SEC = 0.12;          // 真手握拳在篮子上停这么久就拿起（防止路过时误拿）
@@ -109,8 +109,10 @@ export class ThrowMode {
     m.row = row; m.x = best; m.r = row.r;
     m.col = MONSTER_COLORS[Math.floor(this.rng() * MONSTER_COLORS.length)]; m.variant = Math.floor(this.rng() * 6);
     // 贴图种类：尽量和画面上的其它怪兽不一样
-    const used = new Set(others.map(o => o.kind)), free = MONSTER_KINDS.map((_, k) => k).filter(k => !used.has(k));
-    const pool = free.length ? free : MONSTER_KINDS.map((_, k) => k);
+    // 8 种里随机挑，优先挑已经加载好贴图、且画面上没有的那种
+    const used = new Set(others.map(o => o.kind)), all = MONSTER_KINDS.map((_, k) => k), ready = readyKinds();
+    const readyFree = ready.filter(k => !used.has(k)), free = all.filter(k => !used.has(k));
+    const pool = readyFree.length ? readyFree : ready.length ? ready : free.length ? free : all;
     m.kind = pool[Math.floor(this.rng() * pool.length)]; m.sob = 0;
     m.vx = (this.rng() < 0.5 ? -1 : 1) * this.W * (0.02 + this.rng() * 0.025);
     m.state = 'rise'; m.rise = 0; m.wet = 0; m.mood = 'surprise'; m.moodT = 0.5; m.dodge = null;
@@ -299,7 +301,7 @@ export class ThrowMode {
     const rainbow = this.phase === 'target' && correct;
     m.wet = 1; m.squash = 1; m.mood = 'cry'; m.moodT = CRY_SEC; m.hitT = 0; m.tearT = 0.15;
     m.state = 'hit'; m.timer = CRY_SEC;
-    this._splash(m.x, m.cy, rainbow, null, m.r);
+    this._splash(m.x, m.cy, rainbow, null, m.r, true);
     // 被打中就哭（哭脸 + 掉眼泪 + 委屈的“哇——哇”）
     for (const [tx, ty] of tearPoints(m)) for (let k = 0; k < 2; k++) this._squirtTear(m, tx, ty);
     this.sfx.splash(true); setTimeout(() => this.sfx.cry?.(), 140);
@@ -317,7 +319,7 @@ export class ThrowMode {
     } else {
       this.bus.emit('throw:hit', { phase: 'target', hits: this.hits, label: m.label?.text, correct: true });
       this.sfx.fanfare(false);
-      this.effects.sparkle(m.x, m.cy, 16);
+      this.effects.sparkle(m.x, m.cy - m.r * 2.1, 8); // 星星在头顶上，不挡哭脸
       this.speech.say(lang === 'en' ? [{ text: PRAISE.en[i], lang: 'en' }] : lang === 'zh' ? [{ text: PRAISE.zh[i], lang: 'zh' }] : [{ text: PRAISE.zh[i], lang: 'zh' }, { text: PRAISE.en[i], lang: 'en' }], 2500);
       this.target = null; this.promptDue = this.t + 2.0;
     }
@@ -374,12 +376,12 @@ export class ThrowMode {
     for (const [i, [x, y]] of pts.entries()) {
       if (this.rng() < 0.25) { this._squirtTear(m, x, y); continue; }
       const side = i ? 1 : -1;
-      this.tears.push({ x: x + side * this.rng() * 3 * s, y, vx: side * (10 + this.rng() * 25) * s, vy: (20 + this.rng() * 30) * s, s: (4.2 + this.rng() * 1.8) * s, life: 0.7, max: 0.7 });
+      this.tears.push({ x: x + side * this.rng() * 3 * s, y, vx: side * (10 + this.rng() * 25) * s, vy: (20 + this.rng() * 30) * s, s: (5.8 + this.rng() * 2.2) * s, life: 0.75, max: 0.7 });
     }
   }
   _squirtTear(m, x, y) {
     const s = m.r / 50, side = x < m.x ? -1 : 1;
-    this.tears.push({ x, y: y - 6 * s, vx: side * (90 + this.rng() * 90) * s, vy: -(80 + this.rng() * 90) * s, s: (4.8 + this.rng() * 2) * s, life: 0.75, max: 0.75 });
+    this.tears.push({ x, y: y - 6 * s, vx: side * (90 + this.rng() * 90) * s, vy: -(80 + this.rng() * 90) * s, s: (6.4 + this.rng() * 2.4) * s, life: 0.8, max: 0.75 });
   }
   _updateTears(dt) {
     const g = 900 * this.u / 900;
@@ -396,8 +398,19 @@ export class ThrowMode {
   }
 
   // ---------- 水花粒子 ----------
-  _splash(x, y, rainbow, surface, r = this.u * 0.06) {
-    const n = rainbow ? 46 : 28, s = this.u / 900;
+  _splash(x, y, rainbow, surface, r = this.u * 0.06, onMonster = false) {
+    const s = this.u / 900;
+    if (onMonster) {
+      // 打在怪兽身上：水花从身体边缘往外炸开、很快散掉，脸一直露在外面（哭脸马上看得见）
+      const n = rainbow ? 26 : 20;
+      for (let i = 0; i < n; i++) {
+        const a = -Math.PI * (0.02 + 0.96 * (i + this.rng()) / n), v = (260 + this.rng() * 300) * s, c = Math.cos(a), sn = Math.sin(a);
+        this.parts.push({ x: x + c * r * 0.95, y: y + sn * r * 0.85, vx: c * v * 1.2, vy: sn * v * 0.9, r: (3.5 + this.rng() * 4.5) * s,
+          color: rainbow ? RAINBOW[i % RAINBOW.length] : ['#8fd8ff', '#c9efff', '#4cc9f0', '#ffffff'][i % 4], life: 0.32 + this.rng() * 0.25 });
+      }
+      return;
+    }
+    const n = rainbow ? 46 : 28;
     for (let i = 0; i < n; i++) {
       const a = -Math.PI * (0.05 + 0.9 * this.rng()), v = (180 + this.rng() * 380) * s;
       this.parts.push({ x, y, vx: Math.cos(a) * v * (surface ? 0.8 : 1.1), vy: Math.sin(a) * v, r: (4 + this.rng() * 7) * s * (rainbow ? 1.2 : 1),
