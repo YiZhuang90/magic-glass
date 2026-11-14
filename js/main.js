@@ -10,7 +10,7 @@ import { ContentProvider, loadUploadedImage, storeUploadedFile, clearUploadedIma
 import { Effects } from './render/effects.js';
 import { drawHand, drawPlayerMark } from './render/handRenderer.js';
 import { safeRect } from './input/safeZone.js';
-import { Sfx } from './audio/sfx.js';
+import { Sfx } from './audio/sfx.js?v=10';  // 换音效时改版本号，避免缓存旧的
 import { Speech } from './audio/speech.js';
 import { HoverUI } from './ui/hoverUI.js';
 import { HomeMode } from './game/homeMode.js';

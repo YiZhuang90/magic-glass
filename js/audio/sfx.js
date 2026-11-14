@@ -1,4 +1,14 @@
 // 音频层 · 全部用 Web Audio 实时合成，无需音频素材。
+// 轻轻的哭声：每个音 [开始秒, 时长, 起始音高, 结束音高, 音量]
+const CRY_VARIANTS = [
+  // “呜~ 呜~” + 抽鼻子
+  [[0, 0.28, 640, 540, 0.043], [0.34, 0.4, 610, 455, 0.04], [0.82, 0.07, 780, 680, 0.017]],
+  // 三声小抽泣，最后一声拖长
+  [[0, 0.15, 680, 600, 0.034], [0.19, 0.15, 660, 580, 0.034], [0.41, 0.42, 630, 450, 0.04], [0.88, 0.06, 760, 660, 0.015]],
+  // “呜——呜~”：第一声长一点，第二声更低
+  [[0, 0.36, 600, 520, 0.041], [0.43, 0.38, 560, 420, 0.038], [0.86, 0.06, 720, 640, 0.015]],
+];
+
 export class Sfx {
   constructor() { this.ctx = null; this.volume = 0.8; this.wipeLevel = 0; }
 
@@ -151,32 +161,37 @@ export class Sfx {
     g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.16, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
     o.connect(g).connect(this.master); o.start(t); l.start(t); o.stop(t + 0.35); l.stop(t + 0.35);
   }
-  /** 被打中哭：两声软软的“哇——哇”（音高往下滑 + 颤音，滤波器开合像张嘴），约 0.8 秒，委屈但不吓人 */
-  cry() {
-    const c = this.ctx; if (!c) return; const t0 = c.currentTime + 0.02, base = 560 + Math.random() * 120;
-    const out = c.createGain(); out.gain.value = 1;
-    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2600; lp.Q.value = 0.5;
-    out.connect(lp).connect(this.master);
-    [[0, 0.3, 1.0, 0.78], [0.34, 0.46, 0.92, 0.66]].forEach(([st, dur, hi, lo]) => {
-      const t = t0 + st, o = c.createOscillator(), o2 = c.createOscillator(), g = c.createGain(), bp = c.createBiquadFilter();
+  /**
+   * 被打中哭（v10：轻轻的）：像小猫一样“呜~ 呜~”两三声，正弦 + 一点点三角波、低通滤掉刺耳的高频，
+   * 慢慢起音、轻微颤音、音高往下滑，最后一声小抽鼻子。约 0.8–0.95 秒，峰值约为 v9 的 30%、平均响度约一半（而且没有刺耳的高频，听起来更轻）。
+   * 3 种变体随机挑（连着两次不会一样），听多了也不腻。cry(v) 可指定变体（离线渲染试听用）。
+   */
+  get cryVariants() { return CRY_VARIANTS.length; }
+  cry(variant) {
+    const c = this.ctx; if (!c) return;
+    let v = variant;
+    if (v == null) { v = Math.floor(Math.random() * CRY_VARIANTS.length); if (v === this._lastCry) v = (v + 1) % CRY_VARIANTS.length; }
+    this._lastCry = v;
+    const t0 = c.currentTime + 0.02, k = 0.97 + Math.random() * 0.06;   // 每次音高略有不同
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1500; lp.Q.value = 0.4;
+    const out = c.createGain(); out.gain.value = 1; out.connect(lp).connect(this.master);
+    for (const [st, dur, f0, f1, peak] of CRY_VARIANTS[v]) {
+      const t = t0 + st, o = c.createOscillator(), o2 = c.createOscillator(), g = c.createGain(), g2 = c.createGain();
       const vib = c.createOscillator(), vg = c.createGain();
-      o.type = 'triangle'; o2.type = 'sine';
-      o.frequency.setValueAtTime(base * hi, t); o.frequency.linearRampToValueAtTime(base * hi * 1.06, t + dur * 0.2); o.frequency.exponentialRampToValueAtTime(base * lo, t + dur);
-      o2.frequency.setValueAtTime(base * hi * 2, t); o2.frequency.exponentialRampToValueAtTime(base * lo * 2, t + dur);
-      vib.frequency.value = 9; vg.gain.value = base * 0.035; vib.connect(vg); vg.connect(o.frequency);
-      // “哇”：带通从低开到高再合上
-      bp.type = 'bandpass'; bp.Q.value = 2.2;
-      bp.frequency.setValueAtTime(700, t); bp.frequency.exponentialRampToValueAtTime(1700, t + dur * 0.35); bp.frequency.exponentialRampToValueAtTime(800, t + dur);
-      g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.32, t + 0.04); g.gain.setValueAtTime(0.32, t + dur * 0.55); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      const g2 = c.createGain(); g2.gain.value = 0.18;
-      o.connect(bp); o2.connect(g2).connect(bp); bp.connect(g).connect(out);
-      o.start(t); o2.start(t); vib.start(t); o.stop(t + dur + 0.02); o2.stop(t + dur + 0.02); vib.stop(t + dur + 0.02);
-    });
-    // 最后一声小抽泣
-    const t = t0 + 0.86, o = c.createOscillator(), g = c.createGain();
-    o.type = 'sine'; o.frequency.setValueAtTime(base * 1.25, t); o.frequency.exponentialRampToValueAtTime(base * 0.95, t + 0.08);
-    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.06, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
-    o.connect(g).connect(out); o.start(t); o.stop(t + 0.12);
+      o.type = 'sine'; o2.type = 'triangle';
+      o.frequency.setValueAtTime(f0 * k, t); o.frequency.exponentialRampToValueAtTime(f1 * k, t + dur);
+      o2.frequency.setValueAtTime(f0 * k, t); o2.frequency.exponentialRampToValueAtTime(f1 * k, t + dur);
+      // 颤音：一开始没有，慢慢出来（像小声呜咽）
+      vib.frequency.value = 6.5; vg.gain.setValueAtTime(0, t); vg.gain.linearRampToValueAtTime(f0 * k * 0.022, t + dur * 0.6);
+      vib.connect(vg); vg.connect(o.frequency); vg.connect(o2.frequency);
+      g2.gain.value = 0.18;
+      // 软起音（不是“啪”一下）、平平地持续一会儿、再轻轻收掉
+      g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(peak, t + Math.min(0.07, dur * 0.35));
+      g.gain.setValueAtTime(peak, t + dur * 0.5); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); o2.connect(g2).connect(g); g.connect(out);
+      const end = t + dur + 0.02;
+      o.start(t); o2.start(t); vib.start(t); o.stop(end); o2.stop(end); vib.stop(end);
+    }
   }
   /** 冒出来“啵嘤” */
   boing() {

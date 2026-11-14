@@ -1,4 +1,4 @@
-# 魔法玻璃 · v9：擦玻璃 + 混色画画 + 投水球（家用试玩版）
+# 魔法玻璃 · v10：擦玻璃 + 混色画画 + 投水球（家用试玩版）
 
 **在线试玩：<https://yizhuang90.github.io/magic-glass/>**（电脑 Chrome / Edge、iPad Safari 均可）
 
@@ -28,7 +28,7 @@
 | 扔 | 朝怪兽**挥手**，同时**张开手**。方向和力度来自张手前一小段（平滑后的）手的轨迹，带一点向上的弧线。在篮子里原地张开手 = 放回去 |
 | 瞄准辅助 | 很宽松：扔出方向 ±32° 以内、或落点附近的怪兽会被自动“吸”过去；手直接在怪兽身上张开也算打中 |
 | 鼠标 / 触屏 | 在篮子上按下，拖动后松开，按拖动的速度扔出 |
-| 打中 | 换哭脸 + 抖一抖 + 抽泣，脸上掉眼泪，配一声短短的委屈哭声（约 0.9 秒），哭约 1.5 秒后缩回去。打中时的水花从身体边缘往外炸开、很快散掉，星星出现在头顶，哭脸马上就看得见。打错（目标模式里打了别的）不会哭，而是笑着跳开 |
+| 打中 | 换哭脸 + 抖一抖 + 抽泣，脸上掉眼泪，配一声轻轻的“呜~ 呜~”小哭声（v10：像小猫呜咽，约 0.9 秒，3 种随机变体，音量很小），哭约 1.5 秒后缩回去。打中时的水花从身体边缘往外炸开、很快散掉，星星出现在头顶，哭脸马上就看得见。打错（目标模式里打了别的）不会哭，而是笑着跳开 |
 | 自由模式 | 怪兽肚皮上只有一个小爱心，打中哪只都算，每打中一次加一颗星 ⭐（没有时间限制） |
 | 目标模式 | 自由模式打中 5 次（可调）后语音说“现在试试打 3 号！”。屏幕上 3–4 只怪兽身上有大字，顶部题目牌显示要打的字。打对：彩虹水花 + 表扬 + 下一题（不会连续两次同一个）；打错：怪兽咯咯笑着跳开，不扣分；约 8 秒没打中会再说一遍（也可以把手停在“🔊 再听”上）。要打的那只一直留在画面里 |
 
@@ -180,7 +180,7 @@ tools/cut_monsters.py    把 AI 生成的白底原图（每张 4 只一排，可
 js/vendor/               mixbox.esm.js 及其许可证
 js/audio/                合成音效、Web Speech 朗读
 js/content/cards.js      10 张内置卡片 + 家长上传的图片
-tests/                   node tests/throw.test.mjs（投水球逻辑）、python3 tests/e2e_v6.py（投水球：假手拿 / 挥 / 张开打中、自由 → 目标、打对 / 打错、安全区边上拿水球）、python3 tests/e2e_v8.py（怪兽贴图、打中哭、打错不哭）、node tests/unit.test.mjs、node tests/pose.test.mjs（手势）、node tests/mix.test.mjs、python3 tests/e2e_v2.py、python3 tests/e2e_v3.py（画画手势 / 橡皮擦）、python3 tests/e2e_mouse_hide.py（看到真手时隐藏鼠标手）、node tests/players.test.mjs（玩家 / 安全区）、python3 tests/e2e_v4.py（两人左右手 / 安全区）、python3 tests/e2e_ipad.py <网址> [webkit|chromium]（iPad Safari 模拟：触摸、缩放、摄像头属性、声音解锁、模型加载）、python3 tests/perf_camera.py（真模型 + 假摄像头）、python3 tests/perf.py
+tests/                   node tests/throw.test.mjs（投水球逻辑）、python3 tests/e2e_v6.py（投水球：假手拿 / 挥 / 张开打中、自由 → 目标、打对 / 打错、安全区边上拿水球）、python3 tests/e2e_v8.py（怪兽贴图、打中哭、打错不哭）、python3 tests/render_cry.py out.wav（把哭声离线渲染成 wav 试听、看音量）、node tests/unit.test.mjs、node tests/pose.test.mjs（手势）、node tests/mix.test.mjs、python3 tests/e2e_v2.py、python3 tests/e2e_v3.py（画画手势 / 橡皮擦）、python3 tests/e2e_mouse_hide.py（看到真手时隐藏鼠标手）、node tests/players.test.mjs（玩家 / 安全区）、python3 tests/e2e_v4.py（两人左右手 / 安全区）、python3 tests/e2e_ipad.py <网址> [webkit|chromium]（iPad Safari 模拟：触摸、缩放、摄像头属性、声音解锁、模型加载）、python3 tests/perf_camera.py（真模型 + 假摄像头）、python3 tests/perf.py
 ```
 
 ## 许可证说明（第三方）
